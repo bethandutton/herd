@@ -1,3 +1,7 @@
+import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { Plus } from "lucide-react";
+
 const COLUMNS = [
   { key: "backlog", label: "Backlog" },
   { key: "todo", label: "To do" },
@@ -10,16 +14,31 @@ const COLUMNS = [
   { key: "done", label: "Done" },
 ];
 
+interface RepoInfo {
+  name: string;
+}
+
 export function Board() {
+  const [repoName, setRepoName] = useState("Loop");
+
+  useEffect(() => {
+    invoke<RepoInfo | null>("get_active_repo").then((repo) => {
+      if (repo) setRepoName(repo.name);
+    }).catch(() => {});
+  }, []);
+
   return (
     <div className="flex h-full flex-col">
-      {/* Top bar */}
-      <div className="titlebar-drag-region flex h-8 shrink-0 items-center justify-between border-b border-border px-3">
-        <span className="titlebar-no-drag text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Loop
+      {/* Top bar — project name + add button */}
+      <div className="titlebar-drag-region flex h-10 shrink-0 items-center justify-between border-b border-border px-3 pt-5">
+        <span className="titlebar-no-drag text-[13px] font-semibold text-foreground truncate">
+          {repoName}
         </span>
-        <button className="titlebar-no-drag flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-surface-elevated hover:text-foreground">
-          <span className="text-sm leading-none">+</span>
+        <button
+          className="titlebar-no-drag flex h-6 w-6 items-center justify-center rounded hover:bg-surface-elevated text-muted-foreground hover:text-foreground transition-colors duration-75"
+          title="New ticket (⌘N)"
+        >
+          <Plus size={14} />
         </button>
       </div>
 

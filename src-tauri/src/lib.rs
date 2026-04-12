@@ -120,6 +120,55 @@ fn detect_repo_info(path: String) -> Result<DetectedRepoInfo, String> {
     })
 }
 
+// ---- Claude Code detection ----
+
+#[tauri::command]
+fn check_claude_code() -> Result<ClaudeCodeStatus, String> {
+    // Check if claude is installed
+    let which = std::process::Command::new("which")
+        .arg("claude")
+        .output()
+        .ok();
+
+    let installed = which
+        .as_ref()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let path = which
+        .and_then(|o| {
+            if o.status.success() {
+                String::from_utf8(o.stdout).ok().map(|s| s.trim().to_string())
+            } else {
+                None
+            }
+        });
+
+    // Check if logged in by running claude --version (fast, doesn't require auth)
+    let authenticated = if installed {
+        std::process::Command::new("claude")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    Ok(ClaudeCodeStatus {
+        installed,
+        path,
+        authenticated,
+    })
+}
+
+#[derive(Clone, serde::Serialize)]
+struct ClaudeCodeStatus {
+    installed: bool,
+    path: Option<String>,
+    authenticated: bool,
+}
+
 // ---- Keychain commands ----
 
 #[tauri::command]
@@ -154,6 +203,7 @@ pub fn run() {
             create_repo,
             get_active_repo,
             detect_repo_info,
+            check_claude_code,
             store_token,
             get_token,
             delete_token,

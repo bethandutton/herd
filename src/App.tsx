@@ -3,7 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { Board } from "@/components/board/Board";
 import { MiddleColumn } from "@/components/middle/MiddleColumn";
 import { RightColumn } from "@/components/right/RightColumn";
-import { Footer } from "@/components/Footer";
 import { Onboarding } from "@/components/onboarding/Onboarding";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 
@@ -85,13 +84,6 @@ export default function App() {
           </div>
         )}
       </div>
-
-      {/* Footer */}
-      <Footer
-        onOpenSettings={() => setSettingsOpen(true)}
-        rightColumnVisible={rightColumnVisible}
-        onToggleRightColumn={() => setRightColumnVisible((v) => !v)}
-      />
 
       {/* Settings modal */}
       <SettingsPanel
