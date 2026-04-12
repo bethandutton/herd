@@ -125,7 +125,7 @@ export function SettingsPanel({ open, onClose, onRerunSetup }: SettingsPanelProp
               <div className="flex items-center justify-between">
                 <label className="text-xs text-muted-foreground">Linear API token</label>
                 <a
-                  href="https://linear.app/settings/api"
+                  href="https://linear.app/lleverage/settings/account/security"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[11px] text-primary hover:opacity-80"
