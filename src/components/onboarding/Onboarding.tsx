@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 type Step = "welcome" | "linear" | "github" | "repo" | "done";
 
@@ -119,8 +120,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               </a>{" "}
               → Personal API keys.
             </p>
-            <Input
-              type="password"
+            <PasswordInput
               placeholder="lin_api_..."
               value={linearToken}
               onChange={(e) => setLinearToken(e.target.value)}
@@ -166,8 +166,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                 github.com/settings/tokens
               </a>.
             </p>
-            <Input
-              type="password"
+            <PasswordInput
               placeholder="ghp_..."
               value={githubToken}
               onChange={(e) => setGithubToken(e.target.value)}

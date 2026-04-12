@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useTheme, type ThemeMode, type Density, type FontSize } from "@/hooks/useTheme";
 import { X } from "lucide-react";
@@ -133,8 +134,7 @@ export function SettingsPanel({ open, onClose, onRerunSetup }: SettingsPanelProp
                   Get token
                 </a>
               </div>
-              <Input
-                type="password"
+              <PasswordInput
                 value={linearToken}
                 onChange={(e) => setLinearToken(e.target.value)}
                 placeholder="lin_api_..."
@@ -152,8 +152,7 @@ export function SettingsPanel({ open, onClose, onRerunSetup }: SettingsPanelProp
                   Get token
                 </a>
               </div>
-              <Input
-                type="password"
+              <PasswordInput
                 value={githubToken}
                 onChange={(e) => setGithubToken(e.target.value)}
                 placeholder="ghp_..."
