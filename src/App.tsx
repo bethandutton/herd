@@ -1,10 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  Panel,
-  Group as PanelGroup,
-  Separator as PanelResizeHandle,
-} from "react-resizable-panels";
 import { Board } from "@/components/board/Board";
 import { MiddleColumn } from "@/components/middle/MiddleColumn";
 import { RightColumn } from "@/components/right/RightColumn";
@@ -72,40 +67,24 @@ export default function App() {
   return (
     <div className="flex h-screen flex-col bg-background">
       {/* Three-column layout */}
-      <PanelGroup orientation="horizontal" className="flex-1">
-        {/* Left — Board */}
-        <Panel
-          defaultSize={20}
-          minSize={15}
-          maxSize={30}
-          className="border-r border-border bg-background"
-        >
+      <div className="flex flex-1 min-h-0">
+        {/* Left — Board (fixed 280px) */}
+        <div className="w-[280px] min-w-[260px] shrink-0 border-r border-border bg-background overflow-hidden">
           <Board />
-        </Panel>
+        </div>
 
-        <PanelResizeHandle className="w-px bg-border hover:bg-primary transition-colors duration-75" />
-
-        {/* Middle — Plan or Session */}
-        <Panel minSize={30} className="bg-background">
+        {/* Middle — Plan or Session (flexible) */}
+        <div className="flex-1 min-w-0 bg-background">
           <MiddleColumn />
-        </Panel>
+        </div>
 
+        {/* Right — Local (fixed 400px) */}
         {rightColumnVisible && (
-          <>
-            <PanelResizeHandle className="w-px bg-border hover:bg-primary transition-colors duration-75" />
-
-            {/* Right — Local */}
-            <Panel
-              defaultSize={28}
-              minSize={20}
-              maxSize={40}
-              className="border-l border-border bg-background"
-            >
-              <RightColumn />
-            </Panel>
-          </>
+          <div className="w-[400px] min-w-[380px] shrink-0 border-l border-border bg-background overflow-hidden">
+            <RightColumn />
+          </div>
         )}
-      </PanelGroup>
+      </div>
 
       {/* Footer */}
       <Footer
