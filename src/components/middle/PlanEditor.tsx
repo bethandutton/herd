@@ -237,17 +237,18 @@ export function PlanEditor({ ticket, hideToolbar }: PlanEditorProps) {
               <Loader2 size={14} className="animate-spin" />
               Loading plan...
             </div>
-          ) : editing ? (
+          ) : editing || !content ? (
             <textarea
               ref={textareaRef}
               value={content}
               onChange={handleChange}
+              onFocus={() => setEditing(true)}
               className="w-full h-full min-h-[500px] resize-none bg-transparent text-[15px] leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none"
               placeholder="Write your plan here (markdown supported)..."
               spellCheck={false}
             />
-          ) : content ? (
-            <div className="plan-markdown">
+          ) : (
+            <div className="plan-markdown cursor-text" onClick={() => setEditing(true)}>
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
@@ -355,13 +356,6 @@ export function PlanEditor({ ticket, hideToolbar }: PlanEditorProps) {
                 }}
               />
             </div>
-          ) : (
-            <p
-              className="text-sm text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-              onClick={() => setEditing(true)}
-            >
-              No plan yet. Click to start writing...
-            </p>
           )}
         </div>
       </div>
