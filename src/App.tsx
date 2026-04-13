@@ -11,6 +11,7 @@ type AppView = "loading" | "onboarding" | "main";
 
 export interface TicketCard {
   id: string;
+  identifier: string;
   title: string;
   priority: number;
   status: string;

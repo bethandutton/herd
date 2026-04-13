@@ -9,14 +9,15 @@ pub struct LinearClient {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinearIssue {
     pub id: String,
+    pub identifier: String,
     pub title: String,
     pub description: Option<String>,
     pub priority: i64,
     pub state: LinearState,
+    #[serde(default)]
     pub labels: LabelConnection,
     #[serde(rename = "branchName")]
     pub branch_name: Option<String>,
-    pub cycle: Option<CycleRef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,19 +27,15 @@ pub struct LinearState {
     pub state_type: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LabelConnection {
+    #[serde(default)]
     pub nodes: Vec<LinearLabel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinearLabel {
     pub name: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CycleRef {
-    pub id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,15 +102,14 @@ impl LinearClient {
             .map_err(|e| format!("Linear API request failed: {}", e))?;
 
         let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+
         if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
             return Err(format!("Linear API error {}: {}", status, text));
         }
 
-        let gql: GraphQLResponse<T> = resp
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse Linear response: {}", e))?;
+        let gql: GraphQLResponse<T> = serde_json::from_str(&text)
+            .map_err(|e| format!("Failed to parse Linear response: {} — body: {}", e, &text[..200.min(text.len())]))?;
 
         if let Some(errors) = gql.errors {
             let msgs: Vec<String> = errors.into_iter().map(|e| e.message).collect();
@@ -154,6 +150,7 @@ impl LinearClient {
                         ) {
                             nodes {
                                 id
+                                identifier
                                 title
                                 description
                                 priority
@@ -166,9 +163,6 @@ impl LinearClient {
                                     nodes {
                                         name
                                     }
-                                }
-                                cycle {
-                                    id
                                 }
                             }
                         }

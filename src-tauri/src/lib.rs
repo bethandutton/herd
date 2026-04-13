@@ -173,6 +173,7 @@ struct ClaudeCodeStatus {
 #[derive(Clone, serde::Serialize)]
 struct TicketCard {
     id: String,
+    identifier: String,
     title: String,
     priority: i64,
     status: String,
@@ -194,7 +195,8 @@ async fn fetch_linear_tickets() -> Result<Vec<TicketCard>, String> {
             let status = linear::map_linear_state_to_status(&issue.state);
             let tags: Vec<String> = issue.labels.nodes.into_iter().map(|l| l.name).collect();
             TicketCard {
-                id: issue.id,
+                id: issue.id.clone(),
+                identifier: issue.identifier,
                 title: issue.title,
                 priority: issue.priority,
                 status: status.to_string(),
@@ -212,6 +214,102 @@ async fn verify_linear_token(token: String) -> Result<String, String> {
     let client = LinearClient::new(&token);
     let user = client.get_viewer().await?;
     Ok(user.name)
+}
+
+// ---- Plan commands ----
+
+#[tauri::command]
+async fn get_ticket_description(ticket_id: String) -> Result<Option<String>, String> {
+    let token = keychain::get_secret("linear_api_token")?
+        .ok_or("No Linear API token configured")?;
+
+    let _client = LinearClient::new(&token);
+    let query = format!(
+        r#"query {{
+            issue(id: "{}") {{
+                description
+            }}
+        }}"#,
+        ticket_id
+    );
+
+    #[derive(serde::Deserialize)]
+    struct IssueData {
+        issue: IssueDesc,
+    }
+    #[derive(serde::Deserialize)]
+    struct IssueDesc {
+        description: Option<String>,
+    }
+
+    let body = serde_json::json!({ "query": query });
+    let resp = reqwest::Client::new()
+        .post("https://api.linear.app/graphql")
+        .header("Authorization", &token)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    #[derive(serde::Deserialize)]
+    struct GqlResp {
+        data: Option<IssueData>,
+    }
+
+    let gql: GqlResp = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(gql.data.and_then(|d| d.issue.description))
+}
+
+#[tauri::command]
+async fn save_plan_to_linear(ticket_id: String, content: String) -> Result<(), String> {
+    let token = keychain::get_secret("linear_api_token")?
+        .ok_or("No Linear API token configured")?;
+
+    let escaped = content.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
+    let query = format!(
+        r#"mutation {{
+            issueUpdate(id: "{}", input: {{ description: "{}" }}) {{
+                success
+            }}
+        }}"#,
+        ticket_id, escaped
+    );
+
+    let body = serde_json::json!({ "query": query });
+    let resp = reqwest::Client::new()
+        .post("https://api.linear.app/graphql")
+        .header("Authorization", &token)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Linear API error: {}", resp.status()));
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn enhance_plan(
+    _ticket_id: String,
+    title: String,
+    current_plan: String,
+) -> Result<String, String> {
+    // Phase 2.1: will call Anthropic API with codebase context
+    // For now, return a structured template
+    let enhanced = if current_plan.trim().is_empty() {
+        format!(
+            "# {}\n\n## Goal\n\n\n\n## Approach\n\n\n\n## Tasks\n\n- [ ] \n\n## Testing\n\n\n",
+            title
+        )
+    } else {
+        current_plan
+    };
+    Ok(enhanced)
 }
 
 // ---- Keychain commands ----
@@ -328,6 +426,9 @@ pub fn run() {
             check_claude_code,
             fetch_linear_tickets,
             verify_linear_token,
+            get_ticket_description,
+            save_plan_to_linear,
+            enhance_plan,
             store_token,
             get_token,
             delete_token,

@@ -143,7 +143,7 @@ function TicketCardView({
       {/* Row 1: ID + priority */}
       <div className="flex items-center justify-between mb-0.5">
         <span className="font-mono text-[11px] text-muted-foreground truncate">
-          {ticket.id.slice(0, 8)}
+          {ticket.identifier}
         </span>
         {priorityLabel && (
           <span
