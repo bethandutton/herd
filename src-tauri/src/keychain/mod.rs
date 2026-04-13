@@ -19,7 +19,7 @@ pub fn store_secret(key: &str, value: &str) -> Result<(), String> {
     conn.execute(
         "INSERT INTO Settings (key, value) VALUES (?1, ?2)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        [&format!("secret_{}", key), value],
+        [&format!("herd_secret_{}", key), value],
     ).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -35,7 +35,7 @@ pub fn get_secret(key: &str) -> Result<Option<String>, String> {
     let result: Option<String> = conn
         .query_row(
             "SELECT value FROM Settings WHERE key = ?1",
-            [&format!("secret_{}", key)],
+            [&format!("herd_secret_{}", key)],
             |row| row.get(0),
         )
         .ok();
@@ -51,7 +51,7 @@ pub fn delete_secret(key: &str) -> Result<(), String> {
     let conn = rusqlite::Connection::open(&db_path).map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM Settings WHERE key = ?1",
-        [&format!("secret_{}", key)],
+        [&format!("herd_secret_{}", key)],
     ).map_err(|e| e.to_string())?;
     Ok(())
 }

@@ -1,8 +1,8 @@
-# Loop
+# Herd
 
 A macOS desktop app for managing many in-flight Linear tickets across many Git branches in a single repo, without losing context.
 
-Loop gives every active ticket its own persistent Git worktree and its own background Claude Code session, surfaced through a single board where you can jump between tickets in one click and pick up exactly where each one left off.
+Herd gives every active ticket its own persistent Git worktree and its own background Claude Code session, surfaced through a single board where you can jump between tickets in one click and pick up exactly where each one left off.
 
 ## Status
 
@@ -20,7 +20,7 @@ npm run tauri dev
 
 ## Privacy
 
-**Loop has no telemetry. Ever.** No crash reporting, no usage analytics, no network calls except to the Linear API, GitHub API, and Anthropic API — all with your own tokens.
+**Herd has no telemetry. Ever.** No crash reporting, no usage analytics, no network calls except to the Linear API, GitHub API, and Anthropic API — all with your own tokens.
 
 ## License
 

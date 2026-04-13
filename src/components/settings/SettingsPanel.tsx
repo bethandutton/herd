@@ -144,7 +144,7 @@ export function SettingsPanel({ open, onClose, onRerunSetup }: SettingsPanelProp
               <div className="flex items-center justify-between">
                 <label className="text-xs text-muted-foreground">GitHub personal access token</label>
                 <a
-                  href="https://github.com/settings/tokens/new?scopes=repo&description=Loop"
+                  href="https://github.com/settings/tokens/new?scopes=repo&description=Herd"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[11px] text-primary hover:opacity-80"

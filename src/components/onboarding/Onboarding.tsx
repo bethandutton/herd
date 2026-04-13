@@ -106,10 +106,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         {step === "welcome" && (
           <div className="space-y-4">
             <h1 className="text-base font-semibold tracking-tight">
-              Welcome to Loop
+              Welcome to Herd
             </h1>
             <p className="text-sm text-muted-foreground">
-              Loop manages your in-flight Linear tickets across Git worktrees,
+              Herd manages your in-flight Linear tickets across Git worktrees,
               each with its own background Claude Code session. Let's set up
               your connections.
             </p>
@@ -180,7 +180,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
             <p className="text-sm text-muted-foreground">
               Paste a GitHub personal access token (classic). Create one at{" "}
               <a
-                href="https://github.com/settings/tokens/new?scopes=repo&description=Loop"
+                href="https://github.com/settings/tokens/new?scopes=repo&description=Herd"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary underline underline-offset-2 hover:opacity-80"
@@ -193,7 +193,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               <ul className="text-[11px] text-muted-foreground space-y-0.5">
                 <li><code className="font-mono bg-surface px-1 rounded">repo</code> — read PR state, reviews, comments, and CI status</li>
               </ul>
-              <p className="text-[11px] text-muted-foreground/70 mt-1.5">Loop only reads from GitHub in v1. It never writes, merges, or comments.</p>
+              <p className="text-[11px] text-muted-foreground/70 mt-1.5">Herd only reads from GitHub in v1. It never writes, merges, or comments.</p>
             </div>
             <PasswordInput
               placeholder="ghp_..."
@@ -233,7 +233,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               Select your repo
             </h2>
             <p className="text-sm text-muted-foreground">
-              Pick the folder of your local Git clone. Loop will auto-detect
+              Pick the folder of your local Git clone. Herd will auto-detect
               the branch and set up worktrees alongside it.
             </p>
 
@@ -293,10 +293,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               You're all set
             </h2>
             <p className="text-sm text-muted-foreground">
-              Loop is ready. Your tokens are stored securely in macOS Keychain.
+              Herd is ready. Your tokens are stored securely.
             </p>
             <Button onClick={onComplete} className="w-full">
-              Open Loop
+              Open Herd
             </Button>
           </div>
         )}

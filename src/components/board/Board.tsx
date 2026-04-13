@@ -34,7 +34,7 @@ interface RepoInfo {
 }
 
 export function Board({ tickets, activeTicketId, onSelectTicket }: BoardProps) {
-  const [repoName, setRepoName] = useState("Loop");
+  const [repoName, setRepoName] = useState("Herd");
 
   useEffect(() => {
     invoke<RepoInfo | null>("get_active_repo").then((repo) => {

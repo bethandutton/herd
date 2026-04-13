@@ -111,7 +111,7 @@ export function MiddleColumn({ activeTicket }: MiddleColumnProps) {
           <p className="text-[11px] text-muted-foreground text-center">
             Preferences:{" "}
             <kbd className="font-mono bg-surface border border-border rounded px-1 text-[10px]">⌘,</kbd>
-            {" "}or Loop menu
+            {" "}or Herd menu
           </p>
         </div>
       </div>

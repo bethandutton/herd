@@ -341,7 +341,7 @@ pub fn run() {
         .manage(AppState { db: Arc::new(db) })
         .setup(|app| {
             // Build native macOS menu
-            let app_submenu = SubmenuBuilder::new(app, "Loop")
+            let app_submenu = SubmenuBuilder::new(app, "Herd")
                 .about(None)
                 .separator()
                 .item(

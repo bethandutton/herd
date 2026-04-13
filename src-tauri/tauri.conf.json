@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Loop",
+  "productName": "Herd",
   "version": "0.1.0",
-  "identifier": "com.loop.app",
+  "identifier": "com.herd.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Loop",
+        "title": "Herd",
         "width": 1280,
         "height": 800,
         "minWidth": 900,

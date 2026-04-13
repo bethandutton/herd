@@ -28,7 +28,7 @@ impl Database {
     fn db_path() -> PathBuf {
         let support_dir = dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("Loop");
+            .join("Herd");
         support_dir.join("loop.db")
     }
 

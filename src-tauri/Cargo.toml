@@ -1,12 +1,12 @@
 [package]
-name = "loop-app"
+name = "herd"
 version = "0.1.0"
 description = "A macOS desktop app for managing Linear tickets across Git worktrees"
 authors = ["Bethan Dutton"]
 edition = "2021"
 
 [lib]
-name = "loop_app_lib"
+name = "herd_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

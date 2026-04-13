@@ -1,4 +1,4 @@
-# Loop — Project Rules
+# Herd — Project Rules
 
 ## Git
 - Never add Co-Authored-By or any Claude attribution to commits
