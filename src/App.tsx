@@ -312,7 +312,7 @@ export default function App() {
             {/* Tab content */}
             <div className="flex-1 min-h-0 overflow-hidden">
             {activeTab === "plan" && (
-              <LinearTicketTab activeTicket={activeTicket} />
+              <MiddleColumn activeTicket={activeTicket} hideToolbar />
             )}
             {activeTab === "session" && (
               <MiddleColumn activeTicket={activeTicket} hideToolbar sessionOnly />
@@ -401,26 +401,6 @@ function EditableTitle({ ticketId, title, onSaved }: { ticketId: string; title: 
     >
       {title}
     </span>
-  );
-}
-
-// Linear Ticket tab — embeds the Linear issue page
-function LinearTicketTab({ activeTicket }: { activeTicket: TicketCard | null }) {
-  if (!activeTicket) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground">Select a ticket to view.</p>
-      </div>
-    );
-  }
-
-  const linearUrl = `https://linear.app/issue/${activeTicket.identifier}`;
-  return (
-    <iframe
-      src={linearUrl}
-      className="h-full w-full border-0"
-      title="Linear ticket"
-    />
   );
 }
 
