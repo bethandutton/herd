@@ -173,13 +173,13 @@ export default function App() {
         {/* Main area */}
         <div className="flex-1 min-w-0 flex flex-col">
           {/* Tab row — sits above the content panel */}
-          <div className="titlebar-drag-region flex shrink-0 items-end pl-1 gap-0 pt-1">
+          <div className="titlebar-drag-region flex shrink-0 items-end pl-1 gap-1 pt-2 pb-1">
             {activeTicket ? (
               tabs.map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`titlebar-no-drag flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-t-lg transition-colors duration-75 ${
+                  className={`titlebar-no-drag flex items-center gap-2 px-4 py-2 text-[13px] font-medium rounded-t-xl transition-colors duration-75 ${
                     activeTab === tab.key
                       ? "bg-surface text-foreground"
                       : "text-muted-foreground hover:text-foreground hover:bg-surface/50"
