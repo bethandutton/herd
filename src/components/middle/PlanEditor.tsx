@@ -12,6 +12,9 @@ interface PlanEditorProps {
   hideToolbar?: boolean;
 }
 
+// Simple in-memory cache for ticket descriptions
+const descriptionCache = new Map<string, string>();
+
 export function PlanEditor({ ticket, hideToolbar }: PlanEditorProps) {
   const [content, setContent] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -25,22 +28,35 @@ export function PlanEditor({ ticket, hideToolbar }: PlanEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    setContent("");
     setDirty(false);
     setEditing(false);
-    setLoading(true);
     setError(null);
+    setConflict(false);
+
+    // Use cache for instant display
+    const cached = descriptionCache.get(ticket.id);
+    if (cached !== undefined) {
+      setContent(cached);
+      lastRemoteContent.current = cached;
+      setLoading(false);
+    } else {
+      setContent("");
+      setLoading(true);
+    }
+
+    // Fetch fresh in background
     invoke<string | null>("get_ticket_description", { ticketId: ticket.id })
       .then((desc) => {
         const val = desc || "";
-        setContent(val);
-        lastRemoteContent.current = val;
-        setDirty(false);
-        setConflict(false);
+        descriptionCache.set(ticket.id, val);
+        if (!dirty) {
+          setContent(val);
+          lastRemoteContent.current = val;
+        }
       })
       .catch((e) => {
         console.error("Failed to load ticket description:", e);
-        setError(String(e));
+        if (!cached) setError(String(e));
       })
       .finally(() => setLoading(false));
   }, [ticket.id]);
@@ -89,6 +105,8 @@ export function PlanEditor({ ticket, hideToolbar }: PlanEditorProps) {
     try {
       await invoke("save_plan_to_linear", { ticketId: ticket.id, content });
       setDirty(false);
+      descriptionCache.set(ticket.id, content);
+      lastRemoteContent.current = content;
     } catch (e) {
       console.error("Failed to save plan:", e);
     } finally {
