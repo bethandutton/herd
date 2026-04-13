@@ -108,10 +108,11 @@ export default function App() {
 
   const activeTicket = tickets.find((t) => t.id === activeTicketId) || null;
 
-  // Check if active ticket has a PR — reset immediately on ticket change
+  // Check if active ticket has a PR — only for tickets with real branches (in progress+)
+  const WORKING_STATUSES = ["in_progress", "ready_to_test", "in_review", "attention_required", "ready_to_merge"];
   useEffect(() => {
     setHasPr(false);
-    if (!activeTicket?.branch_name) return;
+    if (!activeTicket?.branch_name || !WORKING_STATUSES.includes(activeTicket.status)) return;
 
     let cancelled = false;
     invoke<any>("check_pr_status", { branchName: activeTicket.branch_name })
@@ -201,7 +202,7 @@ export default function App() {
   }
 
   // Determine which tabs are available based on ticket state
-  const hasBranch = !!activeTicket?.branch_name;
+  const hasBranch = !!activeTicket?.branch_name && WORKING_STATUSES.includes(activeTicket?.status || "");
   const hasTicket = !!activeTicket;
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; enabled: boolean; disabledReason: string }[] = [

@@ -663,7 +663,7 @@ function TicketCardView({
           {ticket.title}
         </p>
         {/* Row 3: Branch name */}
-        {ticket.branch_name && (
+        {ticket.branch_name && !["backlog", "todo", "planning"].includes(ticket.status) && (
           <div className="flex items-center gap-1 mt-1">
             <GitBranch size={10} className="text-muted-foreground/50 shrink-0" />
             <span className="font-mono text-[10px] text-muted-foreground/50 truncate">
