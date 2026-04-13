@@ -348,23 +348,37 @@ export function Board({ tickets, activeTicketId, onSelectTicket }: BoardProps) {
 function PriorityBars({ priority }: { priority: number }) {
   if (priority === 0) return null;
 
+  const label = PRIORITY_LABELS[priority];
+
   if (priority === 1) {
-    return <AlertTriangle size={12} className="text-destructive shrink-0" />;
+    return (
+      <span className="relative group">
+        <AlertTriangle size={12} className="text-destructive shrink-0" />
+        <span className="pointer-events-none absolute right-0 bottom-full mb-1.5 whitespace-nowrap rounded bg-zinc-900 dark:bg-zinc-800 px-2 py-1 text-[11px] text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-100 z-50">
+          {label}
+        </span>
+      </span>
+    );
   }
 
   const filled = priority === 2 ? 3 : priority === 3 ? 2 : 1;
   const barColor = priority === 2 ? "bg-warning" : "bg-muted-foreground";
 
   return (
-    <div className="flex items-end gap-[2px] h-3 shrink-0" title={PRIORITY_LABELS[priority]}>
-      {[1, 2, 3].map((i) => (
-        <div
-          key={i}
-          className={`w-[3px] rounded-sm ${i <= filled ? barColor : "bg-border"}`}
-          style={{ height: `${4 + i * 3}px` }}
-        />
-      ))}
-    </div>
+    <span className="relative group">
+      <div className="flex items-end gap-[2px] h-3 shrink-0">
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className={`w-[3px] rounded-sm ${i <= filled ? barColor : "bg-border"}`}
+            style={{ height: `${4 + i * 3}px` }}
+          />
+        ))}
+      </div>
+      <span className="pointer-events-none absolute right-0 bottom-full mb-1.5 whitespace-nowrap rounded bg-zinc-900 dark:bg-zinc-800 px-2 py-1 text-[11px] text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-100 z-50">
+        {label}
+      </span>
+    </span>
   );
 }
 
