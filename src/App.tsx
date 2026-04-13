@@ -151,11 +151,15 @@ export default function App() {
     return <Onboarding onComplete={handleOnboardingComplete} />;
   }
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: "plan", label: "Linear Ticket", icon: <SquareKanban size={13} /> },
-    { key: "pr", label: "GitHub PR", icon: <GitPullRequest size={13} /> },
-    { key: "local", label: "Local Preview", icon: <Globe size={13} /> },
-    { key: "session", label: "Agent", icon: <Bot size={13} /> },
+  // Determine which tabs are available based on ticket state
+  const hasBranch = !!activeTicket?.branch_name;
+  const hasTicket = !!activeTicket;
+
+  const tabs: { key: Tab; label: string; icon: React.ReactNode; enabled: boolean; disabledReason: string }[] = [
+    { key: "plan", label: "Linear Ticket", icon: <SquareKanban size={13} />, enabled: hasTicket, disabledReason: "Select a ticket to view" },
+    { key: "pr", label: "GitHub PR", icon: <GitPullRequest size={13} />, enabled: hasBranch, disabledReason: "Start work on a ticket to create a branch and PR" },
+    { key: "local", label: "Local Preview", icon: <Globe size={13} />, enabled: hasBranch, disabledReason: "Start work on a ticket to enable local preview" },
+    { key: "session", label: "Agent", icon: <Bot size={13} />, enabled: hasBranch || (hasTicket && PLAN_STATUSES.includes(activeTicket!.status)), disabledReason: "Move ticket to Planning first to start an agent session" },
   ];
 
   return (
@@ -176,18 +180,27 @@ export default function App() {
           <div className="titlebar-drag-region flex shrink-0 items-end pl-1 gap-1 pt-2 pb-1">
             {activeTicket ? (
               tabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`titlebar-no-drag flex items-center gap-2 px-4 py-2 text-[13px] font-medium rounded-t-xl transition-colors duration-75 ${
-                    activeTab === tab.key
-                      ? "bg-surface text-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-surface/50"
-                  }`}
-                >
-                  <span className={activeTab === tab.key ? "text-primary" : "text-muted-foreground"}>{tab.icon}</span>
-                  {tab.label}
-                </button>
+                <div key={tab.key} className="titlebar-no-drag relative group">
+                  <button
+                    onClick={() => tab.enabled && setActiveTab(tab.key)}
+                    disabled={!tab.enabled}
+                    className={`flex items-center gap-2 px-4 py-2 text-[13px] font-medium rounded-xl transition-colors duration-75 ${
+                      !tab.enabled
+                        ? "text-muted-foreground/30 cursor-not-allowed"
+                        : activeTab === tab.key
+                          ? "bg-surface text-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-surface/50"
+                    }`}
+                  >
+                    <span className={!tab.enabled ? "text-muted-foreground/30" : activeTab === tab.key ? "text-primary" : "text-muted-foreground"}>{tab.icon}</span>
+                    {tab.label}
+                  </button>
+                  {!tab.enabled && (
+                    <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 whitespace-nowrap rounded bg-zinc-900 dark:bg-zinc-800 px-2 py-1 text-[11px] text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-100 z-50">
+                      {tab.disabledReason}
+                    </span>
+                  )}
+                </div>
               ))
             ) : (
               <div className="h-8" />
@@ -195,7 +208,7 @@ export default function App() {
           </div>
 
           {/* Content panel */}
-          <div className="flex-1 min-h-0 bg-surface rounded-xl rounded-tl-none overflow-hidden flex flex-col">
+          <div className="flex-1 min-h-0 bg-surface rounded-xl overflow-hidden flex flex-col">
             {/* Ticket title bar */}
             {activeTicket && (
               <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-border/50">
