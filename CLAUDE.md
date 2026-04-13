@@ -5,7 +5,7 @@
 - Repo is under bethandutton on GitHub, not any org
 
 ## Design
-- Primary accent color is green (oklch hue ~155), not purple
+- Primary accent color is light blue (oklch hue ~240) to match the sheep app icon
 - Visual reference is Linear — dense, keyboard-first, dark-mode-first
 
 ## UX
