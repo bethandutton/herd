@@ -248,9 +248,10 @@ export function PlanEditor({ ticket, hideToolbar }: PlanEditorProps) {
               spellCheck={false}
             />
           ) : (
-            <div className="plan-markdown cursor-text" onClick={() => setEditing(true)}>
+            <div className="plan-markdown cursor-text text-[15px] leading-relaxed text-foreground [&>*]:text-foreground" onClick={() => setEditing(true)}>
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
+                skipHtml={false}
                 components={{
                   img: ({ src, alt }) => (
                     <img
