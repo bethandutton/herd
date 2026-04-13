@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Save, Loader2 } from "lucide-react";
+import { Sparkles, Save, Loader2, Pencil, Eye } from "lucide-react";
 import type { TicketCard } from "@/App";
 
 interface PlanEditorProps {
@@ -9,25 +11,30 @@ interface PlanEditorProps {
 }
 
 export function PlanEditor({ ticket }: PlanEditorProps) {
-  const [content, setContent] = useState(ticket.title);
+  const [content, setContent] = useState("");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
+  const [editing, setEditing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load the ticket description from Linear (cached locally)
   useEffect(() => {
+    setContent("");
+    setDirty(false);
+    setEditing(false);
     invoke<string | null>("get_ticket_description", { ticketId: ticket.id })
       .then((desc) => {
-        if (desc) {
-          setContent(desc);
-          setDirty(false);
-        }
+        setContent(desc || "");
+        setDirty(false);
       })
-      .catch(() => {
-        // No description cached yet, that's fine
-      });
+      .catch(() => {});
   }, [ticket.id]);
+
+  useEffect(() => {
+    if (editing && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [editing]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setContent(e.target.value);
@@ -37,10 +44,7 @@ export function PlanEditor({ ticket }: PlanEditorProps) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await invoke("save_plan_to_linear", {
-        ticketId: ticket.id,
-        content,
-      });
+      await invoke("save_plan_to_linear", { ticketId: ticket.id, content });
       setDirty(false);
     } catch (e) {
       console.error("Failed to save plan:", e);
@@ -85,6 +89,15 @@ export function PlanEditor({ ticket }: PlanEditorProps) {
           <Button
             variant="ghost"
             size="sm"
+            onClick={() => setEditing(!editing)}
+            title={editing ? "Preview" : "Edit"}
+          >
+            {editing ? <Eye size={13} className="mr-1" /> : <Pencil size={13} className="mr-1" />}
+            {editing ? "Preview" : "Edit"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={handleEnhance}
             disabled={enhancing}
             title="Enhance with Claude"
@@ -112,16 +125,136 @@ export function PlanEditor({ ticket }: PlanEditorProps) {
         </div>
       </div>
 
-      {/* Editor */}
+      {/* Content area */}
       <div className="flex-1 overflow-y-auto p-8">
-        <textarea
-          ref={textareaRef}
-          value={content}
-          onChange={handleChange}
-          className="w-full h-full min-h-[300px] resize-none bg-transparent text-[15px] leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none"
-          placeholder="Write your plan here..."
-          spellCheck={false}
-        />
+        <div className="max-w-3xl mx-auto">
+          {editing ? (
+            <textarea
+              ref={textareaRef}
+              value={content}
+              onChange={handleChange}
+              className="w-full h-full min-h-[500px] resize-none bg-transparent text-[15px] leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none font-mono"
+              placeholder="Write your plan here (markdown supported)..."
+              spellCheck={false}
+            />
+          ) : content ? (
+            <div className="plan-markdown">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  img: ({ src, alt }) => (
+                    <img
+                      src={src}
+                      alt={alt || ""}
+                      className="max-w-full rounded-md border border-border my-3"
+                      loading="lazy"
+                    />
+                  ),
+                  h1: ({ children }) => (
+                    <h1 className="text-xl font-semibold tracking-tight text-foreground mt-6 mb-3 first:mt-0">
+                      {children}
+                    </h1>
+                  ),
+                  h2: ({ children }) => (
+                    <h2 className="text-base font-semibold tracking-tight text-foreground mt-5 mb-2">
+                      {children}
+                    </h2>
+                  ),
+                  h3: ({ children }) => (
+                    <h3 className="text-sm font-semibold text-foreground mt-4 mb-1.5">
+                      {children}
+                    </h3>
+                  ),
+                  p: ({ children }) => (
+                    <p className="text-[15px] leading-relaxed text-foreground mb-3">
+                      {children}
+                    </p>
+                  ),
+                  ul: ({ children }) => (
+                    <ul className="list-disc pl-5 mb-3 space-y-1 text-[15px] text-foreground">
+                      {children}
+                    </ul>
+                  ),
+                  ol: ({ children }) => (
+                    <ol className="list-decimal pl-5 mb-3 space-y-1 text-[15px] text-foreground">
+                      {children}
+                    </ol>
+                  ),
+                  li: ({ children }) => (
+                    <li className="leading-relaxed">{children}</li>
+                  ),
+                  code: ({ children, className }) => {
+                    const isBlock = className?.includes("language-");
+                    if (isBlock) {
+                      return (
+                        <pre className="bg-surface rounded-md border border-border p-3 my-3 overflow-x-auto">
+                          <code className="font-mono text-[13px] text-foreground">
+                            {children}
+                          </code>
+                        </pre>
+                      );
+                    }
+                    return (
+                      <code className="font-mono text-[13px] bg-surface px-1 py-0.5 rounded border border-border">
+                        {children}
+                      </code>
+                    );
+                  },
+                  pre: ({ children }) => <>{children}</>,
+                  a: ({ href, children }) => (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline underline-offset-2 hover:opacity-80"
+                    >
+                      {children}
+                    </a>
+                  ),
+                  blockquote: ({ children }) => (
+                    <blockquote className="border-l-2 border-primary pl-4 my-3 text-muted-foreground italic">
+                      {children}
+                    </blockquote>
+                  ),
+                  hr: () => <hr className="border-border my-6" />,
+                  table: ({ children }) => (
+                    <div className="overflow-x-auto my-3">
+                      <table className="w-full text-[13px] border-collapse border border-border">
+                        {children}
+                      </table>
+                    </div>
+                  ),
+                  th: ({ children }) => (
+                    <th className="border border-border bg-surface px-3 py-1.5 text-left font-medium text-muted-foreground">
+                      {children}
+                    </th>
+                  ),
+                  td: ({ children }) => (
+                    <td className="border border-border px-3 py-1.5 text-foreground">
+                      {children}
+                    </td>
+                  ),
+                  input: ({ checked, ...props }) => (
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      readOnly
+                      className="mr-1.5 h-3.5 w-3.5 rounded border-border"
+                      {...props}
+                    />
+                  ),
+                }}
+              />
+            </div>
+          ) : (
+            <p
+              className="text-sm text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+              onClick={() => setEditing(true)}
+            >
+              No plan yet. Click to start writing...
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
