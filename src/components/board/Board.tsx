@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Search, X, Filter, Check, AlertTriangle, Copy, ExternalLink, ArrowUpDown, Loader2, GitBranch, GitPullRequest, ChevronRight as ChevronRightIcon, List, LayoutGrid, SquareKanban, FileText, RefreshCw } from "lucide-react";
+import { Plus, Search, X, Filter, Check, AlertTriangle, Copy, ExternalLink, ArrowUpDown, Loader2, GitBranch, GitPullRequest, List, LayoutGrid, SquareKanban, FileText, RefreshCw } from "lucide-react";
 import type { TicketCard } from "@/App";
 
 // Status config: priority for sort order, icon style, color
@@ -157,8 +157,7 @@ export function Board({ tickets, activeTicketId, onSelectTicket, onRefresh }: Bo
       setNewTicketTitle("");
       setNewTicketOpen(false);
       // Refresh tickets
-      const updated = await invoke<TicketCard[]>("fetch_linear_tickets");
-      // App.tsx handles this via event, but also update immediately if parent passes a callback
+      await invoke<TicketCard[]>("fetch_linear_tickets");
     } catch (e) {
       console.error("Failed to create ticket:", e);
     } finally {
@@ -502,7 +501,7 @@ export function Board({ tickets, activeTicketId, onSelectTicket, onRefresh }: Bo
 }
 
 function BoardSection({
-  statusKey,
+  statusKey: _statusKey,
   config,
   tickets,
   activeTicketId,

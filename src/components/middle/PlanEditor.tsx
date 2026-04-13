@@ -105,11 +105,6 @@ export function PlanEditor({ ticket, hideToolbar }: PlanEditorProps) {
       .catch(() => {});
   }, [ticket.id]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setContent(e.target.value);
-    setDirty(true);
-  };
-
   const handleSave = async () => {
     setSaving(true);
     try {

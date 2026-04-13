@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Search, ArrowRight, Settings, Plus, Eye, EyeOff, Sun, Moon } from "lucide-react";
+import { Search, ArrowRight, Settings, Plus, Eye } from "lucide-react";
 import type { TicketCard } from "@/App";
 
 interface CommandPaletteProps {

@@ -2,10 +2,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Toaster, toast } from "sonner";
-import { SquareKanban, GitPullRequest, Globe, Bot, ChevronLeft, ChevronRight, Info } from "lucide-react";
+import { SquareKanban, GitPullRequest, Globe, Bot, ChevronLeft, ChevronRight } from "lucide-react";
 import { Board } from "@/components/board/Board";
 import { MiddleColumn } from "@/components/middle/MiddleColumn";
-import { RightColumn } from "@/components/right/RightColumn";
 import { Onboarding } from "@/components/onboarding/Onboarding";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -324,54 +323,6 @@ export default function App() {
 }
 
 // PR tab — shows PR info or iframe
-// Editable title — click to edit, Enter to save, Escape to cancel
-function EditableTitle({ ticketId, title, onSaved }: { ticketId: string; title: string; onSaved: (t: string) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(title);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { setValue(title); }, [title]);
-  useEffect(() => { if (editing) inputRef.current?.select(); }, [editing]);
-
-  const save = async () => {
-    const trimmed = value.trim();
-    if (!trimmed || trimmed === title) { setEditing(false); setValue(title); return; }
-    try {
-      await invoke("update_ticket_title", { ticketId, title: trimmed });
-      onSaved(trimmed);
-    } catch (e) {
-      console.error("Failed to update title:", e);
-      setValue(title);
-    }
-    setEditing(false);
-  };
-
-  if (editing) {
-    return (
-      <input
-        ref={inputRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") save();
-          if (e.key === "Escape") { setValue(title); setEditing(false); }
-        }}
-        className="text-[13px] text-foreground bg-transparent outline-none border-b border-primary flex-1 min-w-0"
-      />
-    );
-  }
-
-  return (
-    <span
-      onClick={() => setEditing(true)}
-      className="text-[13px] text-foreground truncate cursor-text hover:border-b hover:border-border"
-    >
-      {title}
-    </span>
-  );
-}
-
 // Local Preview tab — localhost iframe
 function LocalPreviewTab({ activeTicket }: { activeTicket: TicketCard | null }) {
   const [previewPort, setPreviewPort] = useState(3000);
