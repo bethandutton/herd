@@ -44,7 +44,7 @@
       "endpoints": [
         "https://github.com/bethandutton/herd/releases/latest/download/latest.json"
       ],
-      "pubkey": ""
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI2NjNENkI3NzNGNjJDM0UKUldRK0xQWnp0OVpqdG5KZ3VtRGo3YlplWENkNWs2K1dYeWRZWDh4cHVuUm12NkhQQlJKejZpc20K"
     }
   }
 }
