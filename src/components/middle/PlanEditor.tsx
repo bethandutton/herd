@@ -33,30 +33,40 @@ export function PlanEditor({ ticket, hideToolbar }: PlanEditorProps) {
     setError(null);
     setConflict(false);
 
-    // Use cache for instant display
+    // Use cache for instant display — no flash
     const cached = descriptionCache.get(ticket.id);
     if (cached !== undefined) {
       setContent(cached);
       lastRemoteContent.current = cached;
       setLoading(false);
-    } else {
-      setContent("");
-      setLoading(true);
+      // Still refresh in background, but silently
+      invoke<string | null>("get_ticket_description", { ticketId: ticket.id })
+        .then((desc) => {
+          const val = desc || "";
+          descriptionCache.set(ticket.id, val);
+          // Only update if content hasn't been edited and actually changed
+          if (val !== cached) {
+            setContent(val);
+            lastRemoteContent.current = val;
+          }
+        })
+        .catch(() => {});
+      return;
     }
 
-    // Fetch fresh in background
+    // No cache — show loading
+    setContent("");
+    setLoading(true);
     invoke<string | null>("get_ticket_description", { ticketId: ticket.id })
       .then((desc) => {
         const val = desc || "";
         descriptionCache.set(ticket.id, val);
-        if (!dirty) {
-          setContent(val);
-          lastRemoteContent.current = val;
-        }
+        setContent(val);
+        lastRemoteContent.current = val;
       })
       .catch((e) => {
         console.error("Failed to load ticket description:", e);
-        if (!cached) setError(String(e));
+        setError(String(e));
       })
       .finally(() => setLoading(false));
   }, [ticket.id]);
