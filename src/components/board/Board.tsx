@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Search, X, Filter, Check, AlertTriangle, Copy, ExternalLink, ArrowUpDown, Loader2, GitBranch, ChevronRight as ChevronRightIcon, List, LayoutGrid, SquareKanban, FileText, RefreshCw } from "lucide-react";
+import { Plus, Search, X, Filter, Check, AlertTriangle, Copy, ExternalLink, ArrowUpDown, Loader2, GitBranch, GitPullRequest, ChevronRight as ChevronRightIcon, List, LayoutGrid, SquareKanban, FileText, RefreshCw } from "lucide-react";
 import type { TicketCard } from "@/App";
 
 // Status config: priority for sort order, icon style, color
@@ -12,15 +12,16 @@ interface StatusDef {
   color: string;
 }
 const STATUS_CONFIG: Record<string, StatusDef> = {
-  attention_required: { label: "Attention required", sortOrder: 0, icon: "alert",         color: "#e5484d" },
-  ready_to_merge:     { label: "Ready to merge",     sortOrder: 1, icon: "three-quarter", color: "#30a46c" },
-  in_progress:        { label: "In progress",        sortOrder: 2, icon: "quarter",       color: "#e5a83b" },
-  ready_to_test:      { label: "Ready to test",      sortOrder: 3, icon: "half",          color: "#e5a83b" },
-  in_review:          { label: "In review",           sortOrder: 4, icon: "three-quarter", color: "#30a46c" },
-  planning:           { label: "Planning",            sortOrder: 5, icon: "empty",         color: "#8b8d98" },
-  todo:               { label: "To do",               sortOrder: 6, icon: "empty",         color: "#8b8d98" },
-  backlog:            { label: "Backlog",              sortOrder: 7, icon: "dashed",        color: "#8b8d98" },
-  done:               { label: "Done",                 sortOrder: 8, icon: "full",          color: "#6e6ade" },
+  attention_required:  { label: "Attention required",  sortOrder: 0, icon: "alert",         color: "#e5484d" },
+  ready_to_merge:      { label: "Ready to merge",      sortOrder: 1, icon: "three-quarter", color: "#30a46c" },
+  in_progress:         { label: "In progress",         sortOrder: 2, icon: "quarter",       color: "#e5a83b" },
+  ready_to_test:       { label: "Ready to test",       sortOrder: 3, icon: "half",          color: "#e5a83b" },
+  waiting_for_review:  { label: "Waiting for review",  sortOrder: 4, icon: "half",          color: "#6e6ade" },
+  in_review:           { label: "In review",            sortOrder: 5, icon: "three-quarter", color: "#30a46c" },
+  planning:           { label: "Planning",            sortOrder: 6, icon: "empty",         color: "#8b8d98" },
+  todo:               { label: "To do",               sortOrder: 7, icon: "empty",         color: "#8b8d98" },
+  backlog:            { label: "Backlog",              sortOrder: 8, icon: "dashed",        color: "#8b8d98" },
+  done:               { label: "Done",                 sortOrder: 9, icon: "full",          color: "#6e6ade" },
 };
 
 function StatusCircle({ icon, color, size = 14 }: { icon: StatusIconType; color: string; size?: number }) {
@@ -120,7 +121,7 @@ export function Board({ tickets, activeTicketId, onSelectTicket, onRefresh }: Bo
   const [filterOpen, setFilterOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set([
     "attention_required", "ready_to_merge", "in_progress", "ready_to_test",
-    "in_review", "planning", "todo",
+    "waiting_for_review", "in_review", "planning", "todo",
   ]));
   const [sortBy, setSortBy] = useState<SortOption>("status");
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
@@ -622,10 +623,24 @@ function TicketCardView({
   };
 
   const goToTicket = () => {
-    // Linear URL format: https://linear.app/team/issue/IDENTIFIER
     window.open(`https://linear.app/issue/${ticket.identifier}`, "_blank");
     setContextMenu(null);
   };
+
+  const openPr = async () => {
+    if (!ticket.branch_name) return;
+    try {
+      const info = await invoke<any>("check_pr_status", { branchName: ticket.branch_name });
+      if (info?.url) {
+        window.open(info.url, "_blank");
+      }
+    } catch (e) {
+      console.error("Failed to get PR:", e);
+    }
+    setContextMenu(null);
+  };
+
+  const hasWorkingBranch = ticket.branch_name && ["in_progress", "ready_to_test", "in_review", "waiting_for_review", "attention_required", "ready_to_merge"].includes(ticket.status);
 
   return (
     <>
@@ -694,6 +709,15 @@ function TicketCardView({
             <ExternalLink size={12} className="text-muted-foreground" />
             Open in Linear
           </button>
+          {hasWorkingBranch && (
+            <button
+              onClick={openPr}
+              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-foreground hover:bg-primary/5 transition-colors duration-75"
+            >
+              <GitPullRequest size={12} className="text-muted-foreground" />
+              Open PR
+            </button>
+          )}
 
           <div className="my-1 border-t border-border" />
 

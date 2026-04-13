@@ -109,7 +109,7 @@ export default function App() {
   const activeTicket = tickets.find((t) => t.id === activeTicketId) || null;
 
   // Check if active ticket has a PR — only for tickets with real branches (in progress+)
-  const WORKING_STATUSES = ["in_progress", "ready_to_test", "in_review", "attention_required", "ready_to_merge"];
+  const WORKING_STATUSES = ["in_progress", "ready_to_test", "in_review", "waiting_for_review", "attention_required", "ready_to_merge"];
   useEffect(() => {
     setHasPr(false);
     if (!activeTicket?.branch_name || !WORKING_STATUSES.includes(activeTicket.status)) return;
@@ -207,7 +207,7 @@ export default function App() {
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; enabled: boolean; disabledReason: string }[] = [
     { key: "plan", label: "Linear Ticket", icon: <SquareKanban size={13} />, enabled: hasTicket, disabledReason: "Select a ticket to view" },
-    { key: "pr", label: "GitHub PR", icon: <GitPullRequest size={13} />, enabled: hasPr, disabledReason: hasBranch ? "No PR found for this branch yet" : "Start work on a ticket to create a branch and PR" },
+    { key: "pr", label: "GitHub PR", icon: <GitPullRequest size={13} />, enabled: hasPr || ["in_review", "waiting_for_review", "attention_required", "ready_to_merge"].includes(activeTicket?.status || ""), disabledReason: hasBranch ? "No PR found for this branch yet" : "Start work on a ticket to create a branch and PR" },
     { key: "local", label: "Local Preview", icon: <Globe size={13} />, enabled: hasBranch, disabledReason: "Start work on a ticket to enable local preview" },
     { key: "session", label: "Agent", icon: <Bot size={13} />, enabled: hasBranch || (hasTicket && PLAN_STATUSES.includes(activeTicket!.status)), disabledReason: "Move ticket to Planning first to start an agent session" },
   ];

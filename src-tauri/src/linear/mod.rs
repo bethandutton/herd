@@ -329,7 +329,9 @@ pub fn map_linear_state_to_status(issue: &LinearIssue) -> &'static str {
             }
         }
         "started" => {
-            if name.contains("review") {
+            if name.contains("waiting") && name.contains("review") {
+                "waiting_for_review"
+            } else if name.contains("review") {
                 "in_review"
             } else if name.contains("ready to merge") || name.contains("approved") {
                 "ready_to_merge"
