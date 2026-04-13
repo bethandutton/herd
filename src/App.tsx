@@ -106,6 +106,8 @@ export default function App() {
     return () => { unlisten1.then((f) => f()); };
   }, []);
 
+  const activeTicket = tickets.find((t) => t.id === activeTicketId) || null;
+
   // Check if active ticket has a PR
   useEffect(() => {
     if (!activeTicket?.branch_name) {
@@ -184,8 +186,6 @@ export default function App() {
     setSettingsOpen(false);
     setView("onboarding");
   }, []);
-
-  const activeTicket = tickets.find((t) => t.id === activeTicketId) || null;
 
   if (view === "loading") {
     return (
