@@ -71,13 +71,15 @@ export default function App() {
     return () => { unlisten1.then((f) => f()); };
   }, []);
 
-  // Auto-select tab based on ticket status
+  // When switching tickets, keep current tab if it's still enabled, otherwise default to Linear Ticket
   useEffect(() => {
     if (!activeTicket) return;
-    if (PLAN_STATUSES.includes(activeTicket.status)) {
-      setActiveTab("plan"); // Linear Ticket tab for planning
-    } else {
-      setActiveTab("session"); // Agent tab for in-progress
+    // "plan" (Linear Ticket) is always available when a ticket is selected
+    // Only force-switch if current tab would be disabled
+    const hasBranchNow = !!activeTicket.branch_name;
+    const needsBranch = activeTab === "pr" || activeTab === "local";
+    if (needsBranch && !hasBranchNow) {
+      setActiveTab("plan");
     }
   }, [activeTicketId]);
 
