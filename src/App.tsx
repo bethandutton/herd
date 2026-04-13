@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Toaster, toast } from "sonner";
+import { SquareKanban, GitPullRequest, Globe, Bot } from "lucide-react";
 import { Board } from "@/components/board/Board";
 import { MiddleColumn } from "@/components/middle/MiddleColumn";
 import { RightColumn } from "@/components/right/RightColumn";
@@ -74,9 +75,9 @@ export default function App() {
   useEffect(() => {
     if (!activeTicket) return;
     if (PLAN_STATUSES.includes(activeTicket.status)) {
-      setActiveTab("plan");
+      setActiveTab("plan"); // Linear Ticket tab for planning
     } else {
-      setActiveTab("session");
+      setActiveTab("session"); // Agent tab for in-progress
     }
   }, [activeTicketId]);
 
@@ -150,11 +151,11 @@ export default function App() {
     return <Onboarding onComplete={handleOnboardingComplete} />;
   }
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "plan", label: "Plan" },
-    { key: "session", label: "Session" },
-    { key: "local", label: "Local" },
-    { key: "pr", label: "PR" },
+  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+    { key: "plan", label: "Linear Ticket", icon: <SquareKanban size={13} /> },
+    { key: "pr", label: "GitHub PR", icon: <GitPullRequest size={13} /> },
+    { key: "local", label: "Local Preview", icon: <Globe size={13} /> },
+    { key: "session", label: "Agent", icon: <Bot size={13} /> },
   ];
 
   return (
@@ -169,13 +170,35 @@ export default function App() {
           />
         </div>
 
-        {/* Main area — tabs + content */}
-        <div className="flex-1 min-w-0 bg-surface rounded-xl overflow-hidden flex flex-col">
-          {/* Tab bar */}
-          {activeTicket && (
-            <div className="titlebar-drag-region flex shrink-0 items-end px-4 pt-5 pb-0 gap-0">
-              {/* Ticket identifier + title */}
-              <div className="titlebar-no-drag flex items-center gap-2 min-w-0 mr-4 pb-2">
+        {/* Main area */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          {/* Tab row — sits above the content panel */}
+          <div className="titlebar-drag-region flex shrink-0 items-end pl-1 gap-0 pt-1">
+            {activeTicket ? (
+              tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`titlebar-no-drag flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-t-lg transition-colors duration-75 ${
+                    activeTab === tab.key
+                      ? "bg-surface text-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-surface/50"
+                  }`}
+                >
+                  <span className={activeTab === tab.key ? "text-primary" : "text-muted-foreground"}>{tab.icon}</span>
+                  {tab.label}
+                </button>
+              ))
+            ) : (
+              <div className="h-8" />
+            )}
+          </div>
+
+          {/* Content panel */}
+          <div className="flex-1 min-h-0 bg-surface rounded-xl rounded-tl-none overflow-hidden flex flex-col">
+            {/* Ticket title bar */}
+            {activeTicket && (
+              <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-border/50">
                 <span className="font-mono text-[11px] text-muted-foreground shrink-0">
                   {activeTicket.identifier}
                 </span>
@@ -183,32 +206,10 @@ export default function App() {
                   {activeTicket.title}
                 </span>
               </div>
+            )}
 
-              <div className="titlebar-no-drag flex items-end gap-0 ml-auto">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    className={`px-3 py-1.5 text-xs font-medium transition-colors duration-75 border-b-2 ${
-                      activeTab === tab.key
-                        ? "text-foreground border-primary"
-                        : "text-muted-foreground border-transparent hover:text-foreground"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Titlebar drag region when no ticket */}
-          {!activeTicket && (
-            <div className="titlebar-drag-region h-14 shrink-0" />
-          )}
-
-          {/* Tab content */}
-          <div className="flex-1 min-h-0 overflow-hidden">
+            {/* Tab content */}
+            <div className="flex-1 min-h-0 overflow-hidden">
             {activeTab === "plan" && (
               <MiddleColumn activeTicket={activeTicket} hideToolbar />
             )}
@@ -221,6 +222,7 @@ export default function App() {
             {activeTab === "pr" && (
               <PrTab activeTicket={activeTicket} />
             )}
+            </div>
           </div>
         </div>
       </div>
