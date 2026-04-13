@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Search, X, Filter, Check, AlertTriangle, Copy, ExternalLink, ArrowUpDown, Loader2, GitBranch, ChevronRight as ChevronRightIcon, List, LayoutGrid, SquareKanban, FileText } from "lucide-react";
+import { Plus, Search, X, Filter, Check, AlertTriangle, Copy, ExternalLink, ArrowUpDown, Loader2, GitBranch, ChevronRight as ChevronRightIcon, List, LayoutGrid, SquareKanban, FileText, RefreshCw } from "lucide-react";
 import type { TicketCard } from "@/App";
 
 // Status config: priority for sort order, icon style, color
@@ -105,13 +105,14 @@ interface BoardProps {
   tickets: TicketCard[];
   activeTicketId: string | null;
   onSelectTicket: (id: string) => void;
+  onRefresh?: () => void;
 }
 
 interface RepoInfo {
   name: string;
 }
 
-export function Board({ tickets, activeTicketId, onSelectTicket }: BoardProps) {
+export function Board({ tickets, activeTicketId, onSelectTicket, onRefresh }: BoardProps) {
   const [repoName, setRepoName] = useState("Herd");
   const [viewMode, setViewMode] = useState<"list" | "board">("list");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -127,6 +128,7 @@ export function Board({ tickets, activeTicketId, onSelectTicket }: BoardProps) {
   const [newTicketTitle, setNewTicketTitle] = useState("");
   const [newTicketCreating, setNewTicketCreating] = useState(false);
   const [newTicketMode, setNewTicketMode] = useState<"linear" | "draft">("linear");
+  const [refreshing, setRefreshing] = useState(false);
   const newTicketRef = useRef<HTMLInputElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -238,6 +240,22 @@ export function Board({ tickets, activeTicketId, onSelectTicket }: BoardProps) {
           {repoName}
         </span>
         <div className="titlebar-no-drag flex items-center gap-1">
+          {/* Refresh */}
+          <button
+            onClick={async () => {
+              setRefreshing(true);
+              try {
+                await onRefresh?.();
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+            disabled={refreshing}
+            className="flex h-6 w-6 items-center justify-center rounded hover:bg-surface-elevated text-muted-foreground hover:text-foreground transition-colors duration-75"
+            title="Refresh tickets"
+          >
+            <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+          </button>
           {/* View toggle */}
           <button
             onClick={() => setViewMode(viewMode === "list" ? "board" : "list")}

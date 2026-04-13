@@ -227,6 +227,10 @@ export default function App() {
             tickets={tickets}
             activeTicketId={activeTicketId}
             onSelectTicket={navigateToTicket}
+            onRefresh={async () => {
+              const updated = await invoke<TicketCard[]>("fetch_linear_tickets");
+              setTickets(updated);
+            }}
           />
           </div>
         </div>
