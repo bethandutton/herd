@@ -403,12 +403,24 @@ function LocalPreviewTab({ activeTicket }: { activeTicket: TicketCard | null }) 
 
 function PrTab({ activeTicket }: { activeTicket: TicketCard | null }) {
   const [repoUrl, setRepoUrl] = useState<string | null>(null);
+  const [prInfo, setPrInfo] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     invoke<string | null>("get_github_repo_url")
       .then(setRepoUrl)
       .catch(() => setRepoUrl(null));
   }, []);
+
+  useEffect(() => {
+    setPrInfo(null);
+    if (!activeTicket?.branch_name) return;
+    setLoading(true);
+    invoke<any>("check_pr_status", { branchName: activeTicket.branch_name })
+      .then((info) => setPrInfo(info))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [activeTicket?.id]);
 
   if (!activeTicket?.branch_name) {
     return (
@@ -418,38 +430,65 @@ function PrTab({ activeTicket }: { activeTicket: TicketCard | null }) {
     );
   }
 
-  if (!repoUrl) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
-  // GitHub pulls page filtered by the branch — shows the PR if it exists
-  const prSearchUrl = `${repoUrl}/pulls?q=head:${encodeURIComponent(activeTicket.branch_name)}`;
-  const directPrUrl = `${repoUrl}/pulls?q=is:pr+head:${encodeURIComponent(activeTicket.branch_name)}`;
+  const prUrl = prInfo?.url || (repoUrl ? `${repoUrl}/pulls?q=head:${encodeURIComponent(activeTicket.branch_name)}` : null);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="shrink-0 px-4 py-1.5 border-b border-border/50 flex items-center justify-between">
-        <span className="font-mono text-[11px] text-muted-foreground truncate">
-          {activeTicket.branch_name}
-        </span>
-        <a
-          href={directPrUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[11px] text-primary hover:underline shrink-0 ml-2"
-        >
-          Open in browser
-        </a>
+    <div className="flex h-full items-center justify-center p-8">
+      <div className="max-w-md w-full space-y-6">
+        {/* PR info */}
+        {loading ? (
+          <div className="flex justify-center">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          </div>
+        ) : prInfo ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <GitPullRequest size={16} className="text-muted-foreground" />
+              <span className="font-mono text-sm text-muted-foreground">#{prInfo.number}</span>
+            </div>
+            <h2 className="text-lg font-semibold text-foreground">{prInfo.title}</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              {prInfo.approved && (
+                <span className="text-xs bg-success/20 text-success rounded-full px-2.5 py-1">Approved</span>
+              )}
+              {prInfo.changes_requested && (
+                <span className="text-xs bg-destructive/20 text-destructive rounded-full px-2.5 py-1">Changes requested</span>
+              )}
+              {prInfo.draft && (
+                <span className="text-xs bg-muted-foreground/20 text-muted-foreground rounded-full px-2.5 py-1">Draft</span>
+              )}
+              {prInfo.merged && (
+                <span className="text-xs bg-primary/20 text-primary rounded-full px-2.5 py-1">Merged</span>
+              )}
+              <span className="text-xs text-muted-foreground">{prInfo.comment_count} comments</span>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center space-y-1">
+            <GitPullRequest size={20} className="text-muted-foreground mx-auto" />
+            <p className="text-sm text-muted-foreground">No PR found yet</p>
+          </div>
+        )}
+
+        {/* Branch */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>Branch:</span>
+          <span className="font-mono">{activeTicket.branch_name}</span>
+        </div>
+
+        {/* Open button */}
+        {prUrl && (
+          <a
+            href={prUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full rounded-lg bg-surface-elevated hover:bg-border/50 px-4 py-2.5 text-sm font-medium text-foreground transition-colors duration-75"
+          >
+            <GitPullRequest size={14} />
+            Open in GitHub
+          </a>
+        )}
       </div>
-      <iframe
-        src={prSearchUrl}
-        className="flex-1 w-full border-0"
-        title="GitHub PR"
-      />
     </div>
   );
 }
