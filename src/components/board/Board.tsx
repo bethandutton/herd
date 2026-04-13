@@ -61,7 +61,8 @@ export function Board({ tickets, activeTicketId, onSelectTicket }: BoardProps) {
       <div className="flex-1 overflow-y-auto" style={{ padding: "var(--space-list-padding)" }}>
         <div className="flex flex-col" style={{ gap: "var(--space-section-gap)" }}>
           {COLUMNS.map((col) => {
-            let colTickets = tickets.filter((t) => t.status === col.key);
+            const colTickets = tickets.filter((t) => t.status === col.key);
+            if (colTickets.length === 0) return null;
             const maxShow = col.key === "done" ? 5 : undefined;
             return (
               <BoardColumn

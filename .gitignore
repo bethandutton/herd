@@ -18,8 +18,12 @@ src-tauri/target
 # Claude Code
 .claude/settings.local.json
 
-# Screenshots
-Screenshot*.png
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
 
 # Editor directories and files
 .vscode/*
