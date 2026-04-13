@@ -9,6 +9,7 @@ import { RightColumn } from "@/components/right/RightColumn";
 import { Onboarding } from "@/components/onboarding/Onboarding";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { CommandPalette } from "@/components/CommandPalette";
+import { UpdateChecker } from "@/components/UpdateChecker";
 
 type AppView = "loading" | "onboarding" | "main";
 type Tab = "plan" | "session" | "local" | "pr";
@@ -308,6 +309,8 @@ export default function App() {
         onToggleRightColumn={() => {}}
         onNewTicket={() => {}}
       />
+
+      <UpdateChecker />
 
       <Toaster
         position="bottom-right"
