@@ -148,7 +148,7 @@ export function SettingsPanel({ open, onClose, onRerunSetup }: SettingsPanelProp
           )}
 
           {/* Connections */}
-          {settingsTab === "connections" && (
+          {settingsTab === "connections" && (<>
           <section className="space-y-3">
             <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               Connections
@@ -262,7 +262,7 @@ export function SettingsPanel({ open, onClose, onRerunSetup }: SettingsPanelProp
               </label>
             </div>
           </section>
-          )}
+          </>)}
 
           {/* Project Rules */}
           {settingsTab === "project" && (
