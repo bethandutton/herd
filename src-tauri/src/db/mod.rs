@@ -21,6 +21,10 @@ impl Database {
         Ok(db)
     }
 
+    pub fn db_path_public() -> PathBuf {
+        Self::db_path()
+    }
+
     fn db_path() -> PathBuf {
         let support_dir = dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
