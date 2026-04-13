@@ -1,20 +1,20 @@
-# Loop — Release and Distribution
+# Herd — Release and Distribution
 
-How to ship Loop to other people. This doc is specifically about the macOS distribution process, which is the most fiddly part of the whole project after the worktree management.
+How to ship Herd to other people. This doc is specifically about the macOS distribution process, which is the most fiddly part of the whole project after the worktree management.
 
 This is the doc to read before phase 7 of the build plan. It's also the doc most likely to send Claude Code into rabbit holes if it tries to figure things out from scratch, so the rules of engagement are: follow this doc, and when in doubt ask the user rather than guessing.
 
 ---
 
-## What "shipping" means for Loop
+## What "shipping" means for Herd
 
 A user on the internet should be able to:
 
-1. Find Loop on GitHub
+1. Find Herd on GitHub
 2. Click a "Download for macOS" link in the README
 3. Get a `.dmg` file
-4. Open it, drag Loop to Applications
-5. Launch Loop without macOS Gatekeeper warnings
+4. Open it, drag Herd to Applications
+5. Launch Herd without macOS Gatekeeper warnings
 6. Complete the onboarding flow
 7. Start using it
 
@@ -28,9 +28,9 @@ The "without Gatekeeper warnings" part is the hard one, and it's why this doc ex
 
 **GitHub Releases.** Tagged releases on the GitHub repo, each with a signed `.dmg` attached. This is the only distribution channel for v1.
 
-**Not the Mac App Store.** Loop spawns subprocesses (Claude Code, dev servers), embeds webviews pointing at arbitrary localhost ports, accesses files outside its sandbox, and stores tokens in keychain. The App Store sandbox is incompatible with most of this and the review process for tools like this is painful. App Store distribution is explicitly not in scope.
+**Not the Mac App Store.** Herd spawns subprocesses (Claude Code, dev servers), embeds webviews pointing at arbitrary localhost ports, accesses files outside its sandbox, and stores tokens in keychain. The App Store sandbox is incompatible with most of this and the review process for tools like this is painful. App Store distribution is explicitly not in scope.
 
-**Not Homebrew (yet).** Once the app is stable and has users, a Homebrew Cask is a nice addition (`brew install --cask loop`). It's a follow-up after v1, not part of v1.
+**Not Homebrew (yet).** Once the app is stable and has users, a Homebrew Cask is a nice addition (`brew install --cask herd`). It's a follow-up after v1, not part of v1.
 
 **Auto-updates: deliberately not in v1.** Tauri has an updater module, and it works, but it adds: a signing key for update manifests, an updates.json hosted somewhere, careful version comparison logic, and a UI for "an update is available." For v1, users update by downloading a new `.dmg` from GitHub Releases. The README's install instructions explain this. Auto-update can be added in a later release.
 
@@ -40,7 +40,7 @@ The "without Gatekeeper warnings" part is the hard one, and it's why this doc ex
 
 macOS will refuse to launch unsigned apps downloaded from the internet without scary "this app is from an unidentified developer" warnings. Even with a right-click bypass, it's a terrible first impression and will lose 90% of potential users at the door.
 
-**Loop must be code-signed with an Apple Developer ID Application certificate.**
+**Herd must be code-signed with an Apple Developer ID Application certificate.**
 
 ### Getting the certificate
 
@@ -104,7 +104,7 @@ The notary service returns a JSON log with the specific reason. The GitHub Actio
 
 Notarization requires the **hardened runtime** to be enabled. Tauri does this by default. The entitlements file lives at `src-tauri/entitlements.plist`.
 
-Loop's required entitlements (start with this set, add more only if necessary):
+Herd's required entitlements (start with this set, add more only if necessary):
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -142,11 +142,11 @@ Each entitlement weakens the security model slightly. The principle: include onl
 
 Tauri builds a `.dmg` automatically. The default is functional but ugly. For v1 it's worth a small amount of polish:
 
-- Custom DMG background image with an arrow pointing from the Loop icon to the Applications folder shortcut
+- Custom DMG background image with an arrow pointing from the Herd icon to the Applications folder shortcut
 - Window size and icon positions configured in `tauri.conf.json` under `bundle.macOS.dmg`
 - App icon at `src-tauri/icons/icon.icns`, generated from a 1024×1024 source PNG via Tauri's icon CLI
 
-The icon and DMG background are design assets — Loop should have a real icon, not the default Tauri rocket. A simple, recognizable mark in the indigo-violet of the app's primary color, designed to look good at both 16px (favicon) and 1024px (Retina app icon).
+The icon and DMG background are design assets — Herd should have a real icon, not the default Tauri rocket. A simple, recognizable mark in the indigo-violet of the app's primary color, designed to look good at both 16px (favicon) and 1024px (Retina app icon).
 
 ---
 
@@ -241,7 +241,7 @@ Then:
 
 **App-specific passwords expire** after a year of disuse. The release workflow will mysteriously start failing at the notarization step. Generate a new one at appleid.apple.com and update the secret.
 
-These aren't failures of Loop or the build process — they're inherent to distributing signed Mac apps outside the App Store. The CONTRIBUTING.md should set expectations for anyone considering taking over maintenance.
+These aren't failures of Herd or the build process — they're inherent to distributing signed Mac apps outside the App Store. The CONTRIBUTING.md should set expectations for anyone considering taking over maintenance.
 
 ---
 
@@ -249,7 +249,7 @@ These aren't failures of Loop or the build process — they're inherent to distr
 
 The repo's main `README.md` (the one users see on GitHub) should have:
 
-- What Loop is (one paragraph)
+- What Herd is (one paragraph)
 - Screenshots
 - "Download for macOS" link to the latest release
 - Install instructions: download `.dmg`, drag to Applications, launch
@@ -257,6 +257,6 @@ The repo's main `README.md` (the one users see on GitHub) should have:
 - Link to the spec docs in the `docs/` folder for anyone who wants to understand how it works
 - Link to CONTRIBUTING.md
 - License (MIT)
-- A note that Loop has no telemetry and never phones home
+- A note that Herd has no telemetry and never phones home
 
 This release/distribution doc is a *developer* reference, not a user reference. It doesn't go in the README.

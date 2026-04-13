@@ -34,7 +34,7 @@ export function MiddleColumn({ activeTicket }: MiddleColumnProps) {
   if (activeTicket) {
     return (
       <div className="flex h-full flex-col">
-        <div className="titlebar-drag-region flex h-10 shrink-0 items-center border-b border-border px-4 pt-5">
+        <div className="titlebar-drag-region flex h-14 shrink-0 items-end pb-2 px-4">
           <span className="titlebar-no-drag font-mono text-[11px] text-muted-foreground mr-2">
             {activeTicket.identifier}
           </span>
@@ -60,7 +60,7 @@ export function MiddleColumn({ activeTicket }: MiddleColumnProps) {
   // Empty state
   return (
     <div className="flex h-full flex-col">
-      <div className="titlebar-drag-region flex h-10 shrink-0 items-center border-b border-border px-3 pt-5">
+      <div className="titlebar-drag-region flex h-14 shrink-0 items-end pb-2 px-3">
         <span className="titlebar-no-drag text-[13px] text-muted-foreground">&nbsp;</span>
       </div>
 

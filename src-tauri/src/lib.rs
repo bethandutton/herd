@@ -179,6 +179,8 @@ struct TicketCard {
     status: String,
     branch_name: Option<String>,
     tags: Vec<String>,
+    created_at: String,
+    updated_at: String,
 }
 
 #[tauri::command]
@@ -202,6 +204,8 @@ async fn fetch_linear_tickets() -> Result<Vec<TicketCard>, String> {
                 status: status.to_string(),
                 branch_name: issue.branch_name,
                 tags,
+                created_at: issue.created_at,
+                updated_at: issue.updated_at,
             }
         })
         .collect();

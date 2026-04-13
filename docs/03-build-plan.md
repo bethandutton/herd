@@ -1,6 +1,6 @@
-# Loop — Build Plan
+# Herd — Build Plan
 
-The order to build Loop in. Each phase should be independently usable. Do not try to build everything at once. The user has explicitly asked for the full thing, but the value of the tool comes from the loop closing — get phase 1 working end-to-end before moving on.
+The order to build Herd in. Each phase should be independently usable. Do not try to build everything at once. The user has explicitly asked for the full thing, but the value of the tool comes from the loop closing — get phase 1 working end-to-end before moving on.
 
 After each phase, the app should be installable, runnable, and useful for at least *some* part of the user's workflow.
 
@@ -40,7 +40,7 @@ Deliverables:
 - Clicking a card sets the active ticket (stored in app state, no middle/right column behavior yet)
 - The "+ New ticket" button works: opens a small form, creates a Linear ticket via the API, refreshes
 
-**Definition of done:** the user can launch Loop, see all their assigned Linear tickets, click between them, and create new tickets without leaving the app.
+**Definition of done:** the user can launch Herd, see all their assigned Linear tickets, click between them, and create new tickets without leaving the app.
 
 ---
 
@@ -80,7 +80,7 @@ Deliverables:
 - Switching active ticket swaps the visible terminal instantly. Background sessions keep running and producing output.
 - Unread output dot on a ticket card whose session has produced output since the user last viewed it
 - "Kill session" button in the middle column toolbar
-- The `/handoff` slash command is taught to Claude Code via its initial system prompt; Loop watches the PTY output for the marker, captures the summary, terminates the PTY, moves the ticket to "Ready to test", fires a Mac notification
+- The `/handoff` slash command is taught to Claude Code via its initial system prompt; Herd watches the PTY output for the marker, captures the summary, terminates the PTY, moves the ticket to "Ready to test", fires a Mac notification
 
 **Definition of done:** the user can have many tickets in In progress / Ready to test simultaneously. Each one has its own running Claude Code session in its own worktree. Switching between them is one click and instant. Sessions never lose state.
 
@@ -106,7 +106,7 @@ Deliverables:
 - Browser preview at the bottom of the right column: a Tauri webview pointed at `localhost:<port>`, where port comes from settings (default 3000)
 - "Hide right column" toggle in the footer
 
-**Definition of done:** the user can pick a ticket, switch the local to it, run its dev services, and see the running app in the embedded browser without leaving Loop.
+**Definition of done:** the user can pick a ticket, switch the local to it, run its dev services, and see the running app in the embedded browser without leaving Herd.
 
 ---
 
@@ -128,7 +128,7 @@ Deliverables:
 - Done cleanup worker: 48 hours after a ticket lands in Done, remove the worktree, terminate any lingering session, archive scrollback, remove the card
 - Stale worktree sweep on app startup
 
-**Definition of done:** the user can complete a full real-world cycle in Loop: pick up a ticket, work on it, push a draft PR, get pinged when CodeRabbit comments arrive, address them, get pinged when humans review, merge, watch the ticket disappear.
+**Definition of done:** the user can complete a full real-world cycle in Herd: pick up a ticket, work on it, push a draft PR, get pinged when CodeRabbit comments arrive, address them, get pinged when humans review, merge, watch the ticket disappear.
 
 ---
 
@@ -152,7 +152,7 @@ Deliverables:
 
 ## Phase 7 — Release and distribution
 
-**Goal:** Loop is downloadable, installable, and runnable by anyone with a Mac. Not just runnable from source.
+**Goal:** Herd is downloadable, installable, and runnable by anyone with a Mac. Not just runnable from source.
 
 Deliverables:
 - Tauri build configuration finalized for both Apple Silicon and Intel
@@ -167,7 +167,7 @@ Deliverables:
 
 See `04-release-and-distribution.md` for the full distribution process, the gotchas (notarization can fail in interesting ways), and the GitHub Actions workflow shape.
 
-**Definition of done:** a stranger on the internet can find Loop on GitHub, click "Download", install the `.dmg` without macOS Gatekeeper warnings, launch it, complete onboarding, and start using it within five minutes.
+**Definition of done:** a stranger on the internet can find Herd on GitHub, click "Download", install the `.dmg` without macOS Gatekeeper warnings, launch it, complete onboarding, and start using it within five minutes.
 
 ---
 
@@ -179,7 +179,7 @@ See the "Out of scope for v1" section in `01-product-spec.md`. The short version
 - No drag-and-drop on the board
 - No multi-provider agents
 - No webhook integrations
-- No PR writes from inside Loop
+- No PR writes from inside Herd
 - No multi-repo
 - No tags rendering (data is stored, UI comes in v2)
 - No auto-actions (data model exists, UI and execution come in v2)

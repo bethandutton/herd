@@ -73,7 +73,7 @@ export function PlanEditor({ ticket }: PlanEditorProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
-      <div className="titlebar-drag-region flex h-10 shrink-0 items-center justify-between border-b border-border px-4 pt-5">
+      <div className="titlebar-drag-region flex h-14 shrink-0 items-end justify-between pb-2 px-4">
         <div className="titlebar-no-drag flex items-center gap-2 min-w-0">
           <span className="font-mono text-[11px] text-muted-foreground shrink-0">
             {ticket.identifier}

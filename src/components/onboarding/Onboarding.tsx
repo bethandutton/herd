@@ -104,7 +104,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     <div className="flex h-screen w-screen items-center justify-center bg-background">
       <div className="w-full max-w-md rounded-lg border border-border bg-surface p-8">
         {step === "welcome" && (
-          <div className="space-y-4">
+          <div className="space-y-4 text-center">
+            <div className="flex justify-center">
+              <img src="/app-icon.png" alt="Herd" className="h-16 w-16" />
+            </div>
             <h1 className="text-base font-semibold tracking-tight">
               Welcome to Herd
             </h1>

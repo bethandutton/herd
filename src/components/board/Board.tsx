@@ -1,19 +1,88 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, ChevronRight, ChevronDown, AlertTriangle } from "lucide-react";
+import { Plus, Search, X, Filter, Check, AlertTriangle, Copy, ExternalLink, ArrowUpDown } from "lucide-react";
 import type { TicketCard } from "@/App";
 
-const COLUMNS = [
-  { key: "backlog", label: "Backlog" },
-  { key: "todo", label: "To do" },
-  { key: "planning", label: "Planning" },
-  { key: "in_progress", label: "In progress" },
-  { key: "ready_to_test", label: "Ready to test" },
-  { key: "in_review", label: "In review" },
-  { key: "attention_required", label: "Attention required" },
-  { key: "ready_to_merge", label: "Ready to merge" },
-  { key: "done", label: "Done" },
-];
+// Status config: priority for sort order, icon style, color
+type StatusIconType = "dashed" | "empty" | "quarter" | "half" | "three-quarter" | "full" | "alert";
+interface StatusDef {
+  label: string;
+  sortOrder: number;
+  icon: StatusIconType;
+  color: string;
+}
+const STATUS_CONFIG: Record<string, StatusDef> = {
+  attention_required: { label: "Attention required", sortOrder: 0, icon: "alert",         color: "#e5484d" },
+  ready_to_merge:     { label: "Ready to merge",     sortOrder: 1, icon: "three-quarter", color: "#30a46c" },
+  in_progress:        { label: "In progress",        sortOrder: 2, icon: "quarter",       color: "#e5a83b" },
+  ready_to_test:      { label: "Ready to test",      sortOrder: 3, icon: "half",          color: "#e5a83b" },
+  in_review:          { label: "In review",           sortOrder: 4, icon: "three-quarter", color: "#30a46c" },
+  planning:           { label: "Planning",            sortOrder: 5, icon: "empty",         color: "#8b8d98" },
+  todo:               { label: "To do",               sortOrder: 6, icon: "empty",         color: "#8b8d98" },
+  backlog:            { label: "Backlog",              sortOrder: 7, icon: "dashed",        color: "#8b8d98" },
+  done:               { label: "Done",                 sortOrder: 8, icon: "full",          color: "#6e6ade" },
+};
+
+function StatusCircle({ icon, color, size = 14 }: { icon: StatusIconType; color: string; size?: number }) {
+  const r = 5;
+  const cx = 7;
+  const cy = 7;
+  const circumference = 2 * Math.PI * r;
+
+  if (icon === "alert") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 14 14" className="shrink-0">
+        <circle cx={cx} cy={cy} r={r} fill={color} />
+        <line x1="7" y1="4.5" x2="7" y2="7.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx={7} cy={9.5} r={0.75} fill="white" />
+      </svg>
+    );
+  }
+
+  if (icon === "full") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 14 14" className="shrink-0">
+        <circle cx={cx} cy={cy} r={r} fill={color} />
+        <path d="M5.5 7l1.2 1.2 2.3-2.4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      </svg>
+    );
+  }
+
+  if (icon === "dashed") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 14 14" className="shrink-0">
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="1.5" strokeDasharray="2.5 2.5" opacity="0.5" />
+      </svg>
+    );
+  }
+
+  if (icon === "empty") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 14 14" className="shrink-0">
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="1.5" opacity="0.4" />
+      </svg>
+    );
+  }
+
+  const fillPct = icon === "quarter" ? 0.25 : icon === "half" ? 0.5 : 0.75;
+  const dashLen = circumference * fillPct;
+  const gapLen = circumference - dashLen;
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" className="shrink-0">
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="1.5" opacity="0.2" />
+      <circle
+        cx={cx} cy={cy} r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeDasharray={`${dashLen} ${gapLen}`}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${cx} ${cy})`}
+      />
+    </svg>
+  );
+}
 
 const PRIORITY_LABELS: Record<number, string> = {
   0: "",
@@ -22,6 +91,15 @@ const PRIORITY_LABELS: Record<number, string> = {
   3: "Medium",
   4: "Low",
 };
+
+type SortOption = "status" | "priority" | "created" | "updated" | "title";
+const SORT_OPTIONS: { key: SortOption; label: string }[] = [
+  { key: "status", label: "Status" },
+  { key: "priority", label: "Priority" },
+  { key: "created", label: "Date created" },
+  { key: "updated", label: "Last updated" },
+  { key: "title", label: "Title" },
+];
 
 interface BoardProps {
   tickets: TicketCard[];
@@ -35,6 +113,13 @@ interface RepoInfo {
 
 export function Board({ tickets, activeTicketId, onSelectTicket }: BoardProps) {
   const [repoName, setRepoName] = useState("Herd");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
+  const [sortBy, setSortBy] = useState<SortOption>("status");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const filterRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     invoke<RepoInfo | null>("get_active_repo").then((repo) => {
@@ -42,109 +127,225 @@ export function Board({ tickets, activeTicketId, onSelectTicket }: BoardProps) {
     }).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+
+  // Close filter menu on outside click
+  useEffect(() => {
+    if (!filterOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setFilterOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [filterOpen]);
+
+  const toggleFilter = (status: string) => {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        next.delete(status);
+      } else {
+        next.add(status);
+      }
+      return next;
+    });
+  };
+
+  const query = searchQuery.toLowerCase();
+  let filteredTickets = tickets;
+
+  // Text search
+  if (query) {
+    filteredTickets = filteredTickets.filter(
+      (t) =>
+        t.title.toLowerCase().includes(query) ||
+        t.identifier.toLowerCase().includes(query)
+    );
+  }
+
+  // Status filter
+  if (activeFilters.size > 0) {
+    filteredTickets = filteredTickets.filter((t) => activeFilters.has(t.status));
+  }
+
+  // Sort tickets
+  const sortedTickets = [...filteredTickets].sort((a, b) => {
+    switch (sortBy) {
+      case "priority":
+        // Lower number = higher priority (1=urgent, 4=low, 0=none goes last)
+        return (a.priority || 5) - (b.priority || 5);
+      case "created":
+        return b.created_at.localeCompare(a.created_at);
+      case "updated":
+        return b.updated_at.localeCompare(a.updated_at);
+      case "title":
+        return a.title.localeCompare(b.title);
+      case "status":
+      default:
+        return (STATUS_CONFIG[a.status]?.sortOrder ?? 99) - (STATUS_CONFIG[b.status]?.sortOrder ?? 99);
+    }
+  });
+
+  // All statuses for filter menu, sorted by priority
+  const allStatuses = Object.entries(STATUS_CONFIG)
+    .sort((a, b) => a[1].sortOrder - b[1].sortOrder);
+
   return (
     <div className="flex h-full flex-col">
-      {/* Top bar — project name + add button */}
-      <div className="titlebar-drag-region flex h-10 shrink-0 items-center justify-between border-b border-border px-3 pt-5">
+      {/* Top bar */}
+      <div className="titlebar-drag-region flex h-16 shrink-0 items-end justify-between px-3 pb-2">
         <span className="titlebar-no-drag text-[13px] font-semibold text-foreground truncate">
           {repoName}
         </span>
-        <button
-          className="titlebar-no-drag flex h-6 w-6 items-center justify-center rounded hover:bg-surface-elevated text-muted-foreground hover:text-foreground transition-colors duration-75"
-          title="New ticket (⌘N)"
-        >
-          <Plus size={14} />
-        </button>
-      </div>
+        <div className="titlebar-no-drag flex items-center gap-1">
+          {/* Filter */}
+          <div className="relative" ref={filterRef}>
+            <button
+              onClick={() => setFilterOpen(!filterOpen)}
+              className={`flex h-6 w-6 items-center justify-center rounded transition-colors duration-75 ${
+                activeFilters.size > 0
+                  ? "bg-primary/10 text-primary"
+                  : filterOpen
+                    ? "bg-primary/10 text-primary"
+                    : "hover:bg-surface-elevated text-muted-foreground hover:text-foreground"
+              }`}
+              title="Filter by status"
+            >
+              <Filter size={14} />
+            </button>
+            {filterOpen && (
+              <div className="absolute right-0 top-7 z-50 w-48 rounded-md border border-border bg-surface-elevated py-1 shadow-lg">
+                {/* Sort options */}
+                <div className="px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Sort by</div>
+                {SORT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.key}
+                    onClick={() => setSortBy(opt.key)}
+                    className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-primary/5 transition-colors duration-75"
+                  >
+                    <ArrowUpDown size={12} className="text-muted-foreground shrink-0" />
+                    <span className="flex-1 text-xs text-foreground">{opt.label}</span>
+                    {sortBy === opt.key && <Check size={12} className="text-primary shrink-0" />}
+                  </button>
+                ))}
 
-      {/* Board columns */}
-      <div className="flex-1 overflow-y-auto" style={{ padding: "var(--space-list-padding)" }}>
-        <div className="flex flex-col" style={{ gap: "var(--space-section-gap)" }}>
-          {COLUMNS.map((col) => {
-            const colTickets = tickets.filter((t) => t.status === col.key);
-            if (colTickets.length === 0) return null;
-            const maxShow = col.key === "done" ? 5 : undefined;
-            return (
-              <BoardColumn
-                key={col.key}
-                label={col.label}
-                tickets={colTickets}
-                activeTicketId={activeTicketId}
-                onSelectTicket={onSelectTicket}
-                maxShow={maxShow}
-              />
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
+                <div className="my-1 border-t border-border" />
 
-function BoardColumn({
-  label,
-  tickets,
-  activeTicketId,
-  onSelectTicket,
-  maxShow,
-}: {
-  label: string;
-  tickets: TicketCard[];
-  activeTicketId: string | null;
-  onSelectTicket: (id: string) => void;
-  maxShow?: number;
-}) {
-  const [collapsed, setCollapsed] = useState(false);
-  const displayTickets = maxShow ? tickets.slice(0, maxShow) : tickets;
-  const hiddenCount = maxShow ? Math.max(0, tickets.length - maxShow) : 0;
-
-  return (
-    <div>
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="flex w-full items-center justify-between px-1 pb-1 hover:text-foreground transition-colors duration-75"
-      >
-        <div className="flex items-center gap-1">
-          {collapsed ? (
-            <ChevronRight size={12} className="text-muted-foreground" />
-          ) : (
-            <ChevronDown size={12} className="text-muted-foreground" />
-          )}
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            {label}
-          </span>
-        </div>
-        {tickets.length > 0 && (
-          <span className="text-[11px] text-muted-foreground">{tickets.length}</span>
-        )}
-      </button>
-      {!collapsed && (
-        tickets.length === 0 ? (
-          <div className="text-[11px] text-muted-foreground/50 px-1 pl-5">—</div>
-        ) : (
-          <div className="flex flex-col" style={{ gap: "var(--space-card-gap)" }}>
-            {displayTickets.map((ticket) => (
-              <TicketCardView
-                key={ticket.id}
-                ticket={ticket}
-                isActive={ticket.id === activeTicketId}
-                onClick={() => onSelectTicket(ticket.id)}
-              />
-            ))}
-            {hiddenCount > 0 && (
-              <p className="text-[11px] text-muted-foreground/60 px-1 pl-3">
-                +{hiddenCount} more
-              </p>
+                {/* Status filters */}
+                <div className="px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Filter by status</div>
+                {allStatuses.map(([key, config]) => {
+                  const count = tickets.filter((t) => t.status === key).length;
+                  const isActive = activeFilters.has(key);
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => toggleFilter(key)}
+                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-primary/5 transition-colors duration-75"
+                    >
+                      <StatusCircle icon={config.icon} color={config.color} />
+                      <span className="flex-1 text-xs text-foreground">{config.label}</span>
+                      <span className="text-[11px] text-muted-foreground">{count}</span>
+                      {isActive && <Check size={12} className="text-primary shrink-0" />}
+                    </button>
+                  );
+                })}
+                {activeFilters.size > 0 && (
+                  <>
+                    <div className="my-1 border-t border-border" />
+                    <button
+                      onClick={() => setActiveFilters(new Set())}
+                      className="flex w-full items-center px-2.5 py-1.5 text-left hover:bg-primary/5 transition-colors duration-75"
+                    >
+                      <span className="text-xs text-muted-foreground">Clear filters</span>
+                    </button>
+                  </>
+                )}
+              </div>
             )}
           </div>
-        )
+          {/* Search */}
+          <button
+            onClick={() => {
+              setSearchOpen(!searchOpen);
+              if (searchOpen) setSearchQuery("");
+            }}
+            className={`flex h-6 w-6 items-center justify-center rounded transition-colors duration-75 ${
+              searchOpen
+                ? "bg-primary/10 text-primary"
+                : "hover:bg-surface-elevated text-muted-foreground hover:text-foreground"
+            }`}
+            title="Search (⌘K)"
+          >
+            <Search size={14} />
+          </button>
+          {/* New ticket */}
+          <button
+            className="flex h-6 w-6 items-center justify-center rounded hover:bg-surface-elevated text-muted-foreground hover:text-foreground transition-colors duration-75"
+            title="New ticket (⌘N)"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Search bar */}
+      {searchOpen && (
+        <div className="shrink-0 px-3 pb-2">
+          <div className="flex items-center gap-2 rounded-md bg-surface px-2 py-1.5">
+            <Search size={12} className="shrink-0 text-muted-foreground" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchQuery("");
+                  setSearchOpen(false);
+                }
+              }}
+              placeholder="Filter tickets..."
+              className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/50 outline-none"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
       )}
+
+      {/* Flat ticket list */}
+      <div className="flex-1 overflow-y-auto" style={{ padding: "var(--space-list-padding)" }}>
+        <div className="flex flex-col" style={{ gap: "var(--space-card-gap)" }}>
+          {sortedTickets.map((ticket) => (
+            <TicketCardView
+              key={ticket.id}
+              ticket={ticket}
+              isActive={ticket.id === activeTicketId}
+              onClick={() => onSelectTicket(ticket.id)}
+            />
+          ))}
+          {sortedTickets.length === 0 && (
+            <p className="text-xs text-muted-foreground/50 text-center py-8">
+              No tickets match.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
 function PriorityBars({ priority }: { priority: number }) {
-  // 1=Urgent (alert icon), 2=High (3 bars), 3=Medium (2 bars), 4=Low (1 bar), 0=None
   if (priority === 0) return null;
 
   if (priority === 1) {
@@ -176,29 +377,97 @@ function TicketCardView({
   isActive: boolean;
   onClick: () => void;
 }) {
+  const statusDef = STATUS_CONFIG[ticket.status];
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [contextMenu]);
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const copyId = () => {
+    navigator.clipboard.writeText(ticket.identifier);
+    setContextMenu(null);
+  };
+
+  const goToTicket = () => {
+    // Linear URL format: https://linear.app/team/issue/IDENTIFIER
+    window.open(`https://linear.app/issue/${ticket.identifier}`, "_blank");
+    setContextMenu(null);
+  };
+
   return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left rounded-md border transition-colors duration-75 ${
-        isActive
-          ? "border-l-2 border-l-primary border-y-border border-r-border bg-surface-elevated"
-          : "border-border bg-surface hover:bg-surface-elevated"
-      }`}
-      style={{
-        padding: "var(--space-card-py) var(--space-card-px)",
-      }}
-    >
-      {/* Row 1: ID + priority */}
-      <div className="flex items-center justify-between mb-0.5">
-        <span className="font-mono text-[11px] text-muted-foreground truncate">
-          {ticket.identifier}
-        </span>
-        <PriorityBars priority={ticket.priority} />
-      </div>
-      {/* Row 2: Title */}
-      <p className="text-[13px] text-foreground leading-snug line-clamp-2">
-        {ticket.title}
-      </p>
-    </button>
+    <>
+      <button
+        onClick={onClick}
+        onContextMenu={handleContextMenu}
+        className={`w-full text-left rounded-md transition-colors duration-75 ${
+          isActive
+            ? "bg-surface"
+            : "hover:bg-surface/50"
+        }`}
+        style={{
+          padding: "var(--space-card-py) var(--space-card-px)",
+        }}
+      >
+        {/* Row 1: Status icon + ID + priority */}
+        <div className="flex items-center justify-between mb-0.5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {statusDef && (
+              <span className="relative group">
+                <StatusCircle icon={statusDef.icon} color={statusDef.color} />
+                <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-1.5 whitespace-nowrap rounded bg-zinc-900 dark:bg-zinc-800 px-2 py-1 text-[11px] text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-100 z-50">
+                  {statusDef.label}
+                </span>
+              </span>
+            )}
+            <span className="font-mono text-[11px] text-muted-foreground truncate">
+              {ticket.identifier}
+            </span>
+          </div>
+          <PriorityBars priority={ticket.priority} />
+        </div>
+        {/* Row 2: Title */}
+        <p className="text-[13px] text-foreground leading-snug line-clamp-2">
+          {ticket.title}
+        </p>
+      </button>
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <div
+          ref={menuRef}
+          className="fixed z-50 w-44 rounded-md border border-border bg-surface-elevated py-1 shadow-lg"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            onClick={copyId}
+            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-foreground hover:bg-primary/5 transition-colors duration-75"
+          >
+            <Copy size={12} className="text-muted-foreground" />
+            Copy ID
+          </button>
+          <button
+            onClick={goToTicket}
+            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-foreground hover:bg-primary/5 transition-colors duration-75"
+          >
+            <ExternalLink size={12} className="text-muted-foreground" />
+            Open in Linear
+          </button>
+        </div>
+      )}
+    </>
   );
 }

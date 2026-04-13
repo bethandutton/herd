@@ -29,7 +29,7 @@ impl Database {
         let support_dir = dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("Herd");
-        support_dir.join("loop.db")
+        support_dir.join("herd.db")
     }
 
     fn migrate(&self) -> Result<()> {

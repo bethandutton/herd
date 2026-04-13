@@ -1,3 +1,5 @@
+<img src="app-icon.png" width="80" alt="Herd app icon" />
+
 # Herd
 
 A macOS desktop app for managing many in-flight Linear tickets across many Git branches in a single repo, without losing context.

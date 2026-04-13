@@ -19,6 +19,10 @@ pub struct LinearIssue {
     #[serde(rename = "branchName")]
     pub branch_name: Option<String>,
     pub cycle: Option<CycleRef>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,6 +177,8 @@ impl LinearClient {
                                 cycle {
                                     id
                                 }
+                                createdAt
+                                updatedAt
                             }
                         }
                     }
@@ -183,12 +189,12 @@ impl LinearClient {
     }
 }
 
-/// Map Linear state + cycle to Herd's internal status
-/// - backlog/unstarted + no cycle = "backlog"
-/// - backlog/unstarted + in cycle = "todo"
-/// - started = "in_progress"
-/// - completed = "done"
+/// Map Linear state + cycle to Herd's internal status.
+/// Uses both `state_type` (Linear's category) and `state.name` (the user's
+/// custom workflow state name) to distinguish columns like "In Review".
 pub fn map_linear_state_to_status(issue: &LinearIssue) -> &'static str {
+    let name = issue.state.name.to_lowercase();
+
     match issue.state.state_type.as_str() {
         "backlog" | "unstarted" => {
             if issue.cycle.is_some() {
@@ -197,7 +203,21 @@ pub fn map_linear_state_to_status(issue: &LinearIssue) -> &'static str {
                 "backlog"
             }
         }
-        "started" => "in_progress",
+        "started" => {
+            if name.contains("review") {
+                "in_review"
+            } else if name.contains("ready to merge") || name.contains("approved") {
+                "ready_to_merge"
+            } else if name.contains("ready to test") || name.contains("qa") {
+                "ready_to_test"
+            } else if name.contains("attention") || name.contains("blocked") {
+                "attention_required"
+            } else if name.contains("planning") {
+                "planning"
+            } else {
+                "in_progress"
+            }
+        }
         "completed" => "done",
         _ => "backlog",
     }

@@ -1,10 +1,10 @@
-# Loop — UI and Design
+# Herd — UI and Design
 
-How Loop should look and feel.
+How Herd should look and feel.
 
-The high-level reference: **Loop should feel like Linear.** Dense, fast, keyboard-first, sharp typography, a distinctive dark-leaning palette, thin borders, small icons, and an "engineered" feel that respects the user's time and attention. Loop's users are developers managing many concurrent tickets — they want to see a lot of state at once, move fast, and use the keyboard for everything.
+The high-level reference: **Herd should feel like Linear.** Dense, fast, keyboard-first, sharp typography, a distinctive dark-leaning palette, thin borders, small icons, and an "engineered" feel that respects the user's time and attention. Herd's users are developers managing many concurrent tickets — they want to see a lot of state at once, move fast, and use the keyboard for everything.
 
-This is a deliberate shift away from a "calm chat interface" direction. Loop is a board with a terminal attached, not a chat with a board attached. The board, the cards, and the right column should all feel dense and information-rich. The middle column terminal is the one place that gets to breathe, because terminals are terminals.
+This is a deliberate shift away from a "calm chat interface" direction. Herd is a board with a terminal attached, not a chat with a board attached. The board, the cards, and the right column should all feel dense and information-rich. The middle column terminal is the one place that gets to breathe, because terminals are terminals.
 
 ---
 
@@ -26,7 +26,7 @@ This is a deliberate shift away from a "calm chat interface" direction. Loop is 
 - **Dense.** Tight spacing throughout. More information per square inch than a typical app. The user should be able to see 15 to 20 ticket cards at once on the board without scrolling.
 - **Sharp typography.** Inter at smaller sizes than usual: `text-xs` (12px) and `text-[13px]` are common, `text-sm` (14px) is the default body size, anything larger is reserved for actual emphasis. Line-height tight (`leading-tight` or `leading-snug`). Letter-spacing slightly negative on headings (`tracking-tight`).
 - **Thin borders as structure.** A 1px border in a low-contrast color is the primary way of separating regions. Borders are part of the architecture of the screen, not just dividers. Avoid heavy shadows or large gaps where a thin border would do.
-- **Confident accent color.** Loop has one accent color used consistently for: the active ticket highlight, primary buttons, focus rings, the unread output dot, the current branch indicator. Don't be shy with it but don't sprinkle it on everything either. Suggested default: a desaturated indigo-violet (similar in spirit to Linear's purple but not a copy). Define it as `--primary` in the theme tokens.
+- **Confident accent color.** Herd has one accent color used consistently for: the active ticket highlight, primary buttons, focus rings, the unread output dot, the current branch indicator. Don't be shy with it but don't sprinkle it on everything either. Suggested default: a desaturated indigo-violet (similar in spirit to Linear's purple but not a copy). Define it as `--primary` in the theme tokens.
 - **Speed as a design value.** Transitions are 50 to 100ms, not 150 to 300ms. Hover states snap. Loading spinners are rare, optimistic UI is the default. The user should never wait for the UI to catch up with their click.
 
 ### Typography scale
@@ -59,9 +59,9 @@ Status colors live as small dots (not full badges) on cards. The column the card
 
 ## Theming
 
-Loop supports **dark mode (default), light mode, and system mode** at v1, with the architecture set up so additional themes can be added later without touching components.
+Herd supports **dark mode (default), light mode, and system mode** at v1, with the architecture set up so additional themes can be added later without touching components.
 
-**Dark mode is the default**, not light. Linear is a dark-mode-first product and Loop's audience expects the same. Light mode is a deliberate, well-supported alternative for users who want it, not an afterthought.
+**Dark mode is the default**, not light. Linear is a dark-mode-first product and Herd's audience expects the same. Light mode is a deliberate, well-supported alternative for users who want it, not an afterthought.
 
 ### How theming works
 
@@ -98,7 +98,7 @@ The light mode palette mirrors this structure with inverted lightness values, bu
 
 ### Terminal theming
 
-`xterm.js` accepts a theme object with foreground, background, cursor, selection, and ANSI colors. Loop should:
+`xterm.js` accepts a theme object with foreground, background, cursor, selection, and ANSI colors. Herd should:
 
 - Read the current app theme on startup and pass a matching theme object to xterm.js
 - Re-theme xterm.js when the user changes the app theme (no restart)
@@ -112,7 +112,7 @@ The light mode palette mirrors this structure with inverted lightness values, bu
 
 The user can adjust both **density** (how much breathing room) and **font size** (the base text size of the whole app), independently. Stored in `Settings`.
 
-Note: even at the most spacious density setting, Loop is denser than a typical app. The density slider tunes within Loop's range, not relative to the whole web.
+Note: even at the most spacious density setting, Herd is denser than a typical app. The density slider tunes within Herd's range, not relative to the whole web.
 
 ### Density
 
@@ -175,7 +175,7 @@ Footer text is `text-[11px] text-muted-foreground`. The whole footer is one line
 
 ### The board (left column)
 
-- **Top bar:** "Loop" wordmark on the left in small caps, **+** button (new ticket) on the right. Single line, ~32px tall.
+- **Top bar:** "Herd" wordmark on the left in small caps, **+** button (new ticket) on the right. Single line, ~32px tall.
 - **Below:** vertical scrollable stack of column groups. Each is one of the nine status columns from the product spec.
 - Each group has a header: column name in `text-[11px] uppercase tracking-wide font-medium text-muted-foreground` on the left, count badge on the right. Single line, no separator below the header (the cards' top border does that work).
 - Tickets within a group are cards stacked vertically with a small `gap-1` (4px) between them. Tight.
@@ -201,7 +201,7 @@ No card padding wider than `px-3 py-2`. Tight.
 - **Top toolbar** (32px tall): ticket ID in mono + title on the left, mode-specific actions on the right (Enhance/Save in Plan mode, PR overlay toggle + Kill in Session mode). Single line, separated from the content below by a 1px border.
 - **Below the toolbar:** the editor or terminal, filling the remaining space.
 - **Padding:** 
-  - Plan mode: `p-8` for generous reading space (the one place Loop is *not* dense; sustained reading deserves room)
+  - Plan mode: `p-8` for generous reading space (the one place Herd is *not* dense; sustained reading deserves room)
   - Session mode: `p-2` to `p-3`, the terminal wants to be close to the edges so xterm.js has maximum width for output
 - **Empty state** (no active ticket): centered icon + one sentence in `text-muted-foreground`. Quiet. Don't show tutorials, don't show a list of features.
 
@@ -256,7 +256,7 @@ shadcn's `AlertDialog` for destructive or context-changing actions:
 - Killing a Claude session
 - Closing/cleaning up a ticket
 
-shadcn's `Sonner` (toast) for non-blocking feedback. Toasts in Loop are *small* and *fast*: bottom-right corner, single line, auto-dismiss in 2 seconds:
+shadcn's `Sonner` (toast) for non-blocking feedback. Toasts in Herd are *small* and *fast*: bottom-right corner, single line, auto-dismiss in 2 seconds:
 - "Plan saved"
 - "Branch created"
 - "Session handed off"
@@ -333,4 +333,4 @@ When making styling decisions, the visual reference is **Linear**, not ChatGPT, 
 - Linear's keyboard-first ethos: every action has a shortcut, shortcuts are visible in tooltips and menus
 - Linear's "feels engineered" quality: tight, considered, fast
 
-Loop is not a Linear clone and shouldn't try to be. But if a styling decision feels uncertain, "what would Linear do?" is the right question to ask.
+Herd is not a Linear clone and shouldn't try to be. But if a styling decision feels uncertain, "what would Linear do?" is the right question to ask.

@@ -1,4 +1,4 @@
-# Loop — Product Spec
+# Herd — Product Spec
 
 A macOS desktop app for managing many in-flight Linear tickets across many Git branches in a single repo, without losing context every time a review cycle interrupts you.
 
@@ -10,7 +10,7 @@ Built with **Tauri** (Rust backend, React frontend).
 
 The user works in one repo. Tickets are small. The review cycle (CodeRabbit + human reviewers) takes longer than the work itself, so by the time a review comes back, the user has moved on to another ticket and is deep in unrelated context. Switching back to handle the review means: stash, checkout, re-read the PR, answer comments, push, switch back, lose flow. Multiply by four concurrent tickets and the day is mostly context-switching.
 
-Loop fixes this by giving every active ticket its own persistent Git worktree and its own background Claude Code session, surfaced through a single board where the user can jump between tickets in one click and pick up exactly where each one left off.
+Herd fixes this by giving every active ticket its own persistent Git worktree and its own background Claude Code session, surfaced through a single board where the user can jump between tickets in one click and pick up exactly where each one left off.
 
 ---
 
@@ -90,7 +90,7 @@ This is the part that has to be exactly right or nothing else works.
 
 ### Two kinds of worktrees
 
-Loop maintains **two distinct kinds of worktrees** in `~/code/<repo>-worktrees/`:
+Herd maintains **two distinct kinds of worktrees** in `~/code/<repo>-worktrees/`:
 
 1. **Per-ticket worktrees** — one folder per active ticket. Named after the branch (which is named after the Linear ticket ID + title). Each one has its own checked-out branch, its own `node_modules`, and is the working directory for that ticket's background Claude Code session. The session's PTY is spawned with this folder as cwd.
 
@@ -100,10 +100,10 @@ The reason for the split: background Claude sessions don't need ports. They're t
 
 ### Branch creation rules
 
-When a ticket transitions out of Planning (i.e. when the user starts work), Loop creates the branch and worktree. The rules:
+When a ticket transitions out of Planning (i.e. when the user starts work), Herd creates the branch and worktree. The rules:
 
 1. **Always branch from `origin/main`, never from local `main`.** Run `git fetch origin main` first, then `git worktree add <path> -b <branch-name> origin/main`.
-2. **Branch name** comes from Linear: the ticket ID and a slugified version of the title. Loop reads the convention from Linear's "git branch name" field if present, otherwise constructs it as `<TICKET-ID>-<slugified-title>`.
+2. **Branch name** comes from Linear: the ticket ID and a slugified version of the title. Herd reads the convention from Linear's "git branch name" field if present, otherwise constructs it as `<TICKET-ID>-<slugified-title>`.
 3. **Worktree path:** `~/code/<repo>-worktrees/<branch-name>`.
 4. **Before creating:** check whether this branch already exists locally or remotely. If yes, offer to use the existing one instead of creating a duplicate.
 5. **After creating:** copy `.env*` files (and any other gitignored files matching a configurable allowlist) from the local worktree into the new one, so the dev environment works out of the box.
@@ -111,7 +111,7 @@ When a ticket transitions out of Planning (i.e. when the user starts work), Loop
 
 ### Branch-collision detection (soft warning)
 
-Before creating a new branch, Loop runs a check: for each other active worktree, get the list of files that branch has changed against `origin/main` (`git diff --name-only origin/main...<branch>`). Also fetch open PRs from GitHub and their changed files. Then make a single Claude API call with the new ticket's plan and the list of files touched by other active branches and open PRs, asking: "Does this ticket likely overlap with any of these?"
+Before creating a new branch, Herd runs a check: for each other active worktree, get the list of files that branch has changed against `origin/main` (`git diff --name-only origin/main...<branch>`). Also fetch open PRs from GitHub and their changed files. Then make a single Claude API call with the new ticket's plan and the list of files touched by other active branches and open PRs, asking: "Does this ticket likely overlap with any of these?"
 
 If the answer is yes, show a non-blocking warning before branch creation: "Heads up — branch X (and/or PR Y by Z) is touching files that look related to this ticket. Continue anyway?"
 
@@ -137,14 +137,14 @@ There is also a "stale worktree" sweep on app startup: any worktree whose branch
 1. **Created** when a ticket leaves Planning and a worktree is built. The PTY is spawned but the session is idle until the user gives it a prompt.
 2. **Active** as the user interacts with it through the middle column.
 3. **Background** when the user clicks away to another ticket. The PTY keeps running, output buffers in memory, the session continues whatever it was doing.
-4. **Completed** when the agent runs `/handoff` (a slash command Loop teaches Claude Code about via its system prompt). The PTY process is terminated cleanly, scrollback is saved to disk, the ticket moves to Ready to test.
+4. **Completed** when the agent runs `/handoff` (a slash command Herd teaches Claude Code about via its system prompt). The PTY process is terminated cleanly, scrollback is saved to disk, the ticket moves to Ready to test.
 5. **Killed** when the user hits the "Kill session" button (for stuck or broken sessions). Same cleanup as completed but no status transition — the user can restart the session manually.
 
 ### The handoff signal
 
-Loop teaches Claude Code about a `/handoff` slash command via its initial system prompt. The instruction to the agent: "When you genuinely believe the work is complete and you have tested it as well as you can, run `/handoff` with a short summary of what's done, what's still TODO, and what the user should manually verify."
+Herd teaches Claude Code about a `/handoff` slash command via its initial system prompt. The instruction to the agent: "When you genuinely believe the work is complete and you have tested it as well as you can, run `/handoff` with a short summary of what's done, what's still TODO, and what the user should manually verify."
 
-Loop watches the session's output for the handoff marker. When it sees one, it:
+Herd watches the session's output for the handoff marker. When it sees one, it:
 - Captures the summary into the ticket's metadata
 - Terminates the PTY
 - Moves the ticket card to Ready to test
@@ -152,7 +152,7 @@ Loop watches the session's output for the handoff marker. When it sees one, it:
 
 ### Running many sessions
 
-There is no artificial cap on concurrent sessions. The user can have ten active tickets and ten background Claude sessions. The constraint is the Anthropic API rate limit (or the user's Claude Pro/Max subscription), which Loop does not try to hide. A small usage indicator in the app footer shows current rate limit headroom if available.
+There is no artificial cap on concurrent sessions. The user can have ten active tickets and ten background Claude sessions. The constraint is the Anthropic API rate limit (or the user's Claude Pro/Max subscription), which Herd does not try to hide. A small usage indicator in the app footer shows current rate limit headroom if available.
 
 ### Killing stuck sessions
 
@@ -164,17 +164,17 @@ Every ticket card in In progress has a "Kill" affordance. Killing a session term
 
 ### Reads
 
-Loop polls the Linear API every 30 seconds for:
+Herd polls the Linear API every 30 seconds for:
 - Tickets assigned to the user (drives Backlog and To do columns)
 - Ticket plan (description) updates (used to detect mid-edit conflicts in the plan editor)
 - Labels on tickets (stored in the `tags` field for v2 rendering)
 
 ### Writes
 
-Loop writes to Linear when:
+Herd writes to Linear when:
 - The user hits **Save to Linear** in the plan editor (updates ticket description)
 - The user creates a new ticket via the **+ New ticket** button
-- A ticket transitions to certain statuses, Loop optionally updates the Linear status to match (configurable per status; off by default to avoid surprising teammates)
+- A ticket transitions to certain statuses, Herd optionally updates the Linear status to match (configurable per status; off by default to avoid surprising teammates)
 
 ### Auth
 
@@ -186,7 +186,7 @@ Linear API token, stored in macOS Keychain. Set up via a Settings panel on first
 
 ### Reads (polling)
 
-Loop polls GitHub every 60 seconds for each open PR it knows about:
+Herd polls GitHub every 60 seconds for each open PR it knows about:
 - PR state (draft, open, merged, closed)
 - New review comments (CodeRabbit and humans)
 - New issue comments on the PR
@@ -201,7 +201,7 @@ Loop polls GitHub every 60 seconds for each open PR it knows about:
 
 ### Writes
 
-Loop does not write to GitHub in v1. The user merges PRs manually through the GitHub UI (or via the PR overlay in the middle column).
+Herd does not write to GitHub in v1. The user merges PRs manually through the GitHub UI (or via the PR overlay in the middle column).
 
 ### Auth
 
@@ -219,7 +219,7 @@ Triggers:
 - Claude session runs `/handoff` → "Ticket X is ready for you to test"
 - Claude session errors out or is killed unexpectedly → "Ticket X session ended unexpectedly"
 
-Clicking a notification opens Loop and makes the relevant ticket the active ticket.
+Clicking a notification opens Herd and makes the relevant ticket the active ticket.
 
 ---
 
@@ -239,7 +239,7 @@ Concrete shape:
 
 ## Data model
 
-A local SQLite database in `~/Library/Application Support/Loop/loop.db`.
+A local SQLite database in `~/Library/Application Support/Herd/herd.db`.
 
 ```
 Repo {
@@ -328,14 +328,14 @@ Settings {
 
 ```
 ~/code/
-  <repo>/                          # the user's normal clone, untouched by Loop
+  <repo>/                          # the user's normal clone, untouched by Herd
   <repo>-worktrees/
     LOOP-101-fix-auth-bug/         # per-ticket worktree (background Claude session)
     LOOP-104-add-feature-x/        # another per-ticket worktree
     _local/                        # the singleton local worktree (right column)
 
-~/Library/Application Support/Loop/
-  loop.db
+~/Library/Application Support/Herd/
+  herd.db
   scrollbacks/
     <claude_session_id>.log
   archived_scrollbacks/
@@ -363,11 +363,11 @@ A small Settings panel:
 
 ## Open source considerations
 
-Loop is an open-source project, MIT-licensed, distributed via GitHub Releases. Anyone can download it, run it, fork it, and contribute. This shapes several decisions throughout the spec:
+Herd is an open-source project, MIT-licensed, distributed via GitHub Releases. Anyone can download it, run it, fork it, and contribute. This shapes several decisions throughout the spec:
 
 ### No assumptions about the user
 
-The user is not "Bethan with this specific repo at this specific path." The user is anyone who downloads Loop. Everything that varies between users must be configurable through the UI, never hardcoded:
+The user is not "Bethan with this specific repo at this specific path." The user is anyone who downloads Herd. Everything that varies between users must be configurable through the UI, never hardcoded:
 
 - Repo path (where the user's clone lives)
 - Worktrees parent folder
@@ -380,9 +380,9 @@ The `Repo` table holds all repo-specific settings. v1 only ever has one row in i
 
 ### First-run experience
 
-When Loop launches for the first time (no `Repo` rows in the database), it shows a guided onboarding flow rather than the empty three-column layout. The flow:
+When Herd launches for the first time (no `Repo` rows in the database), it shows a guided onboarding flow rather than the empty three-column layout. The flow:
 
-1. **Welcome panel** explaining what Loop does in two sentences and what the user is about to set up
+1. **Welcome panel** explaining what Herd does in two sentences and what the user is about to set up
 2. **Linear connection**: paste API token, verify by fetching the user's name, store in keychain
 3. **GitHub connection**: paste personal access token (with required scopes listed: `repo`), verify, store in keychain
 4. **Repo setup**: pick the repo folder via a native folder picker, give it a friendly name, confirm primary branch name (auto-detected from `git symbolic-ref refs/remotes/origin/HEAD`), set browser preview port (default 3000)
@@ -392,7 +392,7 @@ The onboarding is also reachable from Settings later (as "Re-run setup"), useful
 
 ### Privacy and telemetry
 
-**Loop has no telemetry. Ever.** No crash reporting, no usage analytics, no network calls except to:
+**Herd has no telemetry. Ever.** No crash reporting, no usage analytics, no network calls except to:
 
 - The Linear API (with the user's own token)
 - The GitHub API (with the user's own token)
@@ -408,7 +408,7 @@ All tokens (Linear, GitHub, optionally Anthropic API key) are stored in **macOS 
 
 The repo must include, at the time of v1 release:
 
-- `README.md` at the repo root: what Loop is, screenshots, install instructions, quickstart, link to the spec docs
+- `README.md` at the repo root: what Herd is, screenshots, install instructions, quickstart, link to the spec docs
 - `LICENSE` (MIT)
 - `CONTRIBUTING.md`: how to set up a dev environment, how to run from source, how to submit a PR, the project's stance on scope (i.e. "this is a personal-tool-shaped project, not all features will be accepted")
 - `CHANGELOG.md`: at least one entry for the v1 release
@@ -418,7 +418,7 @@ Documentation is not optional and is not a follow-up. It ships with v1.
 
 ### Contribution philosophy
 
-Loop is intentionally narrow. It does one thing (manage many in-flight tickets across worktrees) for one kind of user (a solo developer with a slow review cycle). Contributions that broaden it past that — multi-user features, team collaboration, web access, mobile-first redesigns, generic Kanban features — should be politely declined or pointed to a fork. Contributions that improve the core loop, fix bugs, improve accessibility, support more git providers, or add genuine quality improvements are welcomed.
+Herd is intentionally narrow. It does one thing (manage many in-flight tickets across worktrees) for one kind of user (a solo developer with a slow review cycle). Contributions that broaden it past that — multi-user features, team collaboration, web access, mobile-first redesigns, generic Kanban features — should be politely declined or pointed to a fork. Contributions that improve the core loop, fix bugs, improve accessibility, support more git providers, or add genuine quality improvements are welcomed.
 
 The CONTRIBUTING.md should say this directly so contributors don't waste time on unwanted PRs.
 
@@ -440,11 +440,11 @@ These have come up in conversation but are deliberately not in v1. They are list
 - Auto-stopping the previous local's services when switching tickets without confirmation. v1 always confirms.
 - Multi-repo support. v1 is one repo at a time.
 - Webhook-based integrations (Linear and GitHub are both polled). Webhooks are nicer but require a public endpoint.
-- Writing PR comments or merging PRs from inside Loop. v1 reads only.
+- Writing PR comments or merging PRs from inside Herd. v1 reads only.
 
 ### Planned for v2 (build v1 to leave room for these)
 
-**Tags on tickets.** Linear's labels, synced bidirectionally, displayed as colored chips on each card. Tags describe *kind of work* (design, draft, spike, blocked) while columns describe *workflow state*. A ticket can be "In review" and tagged "design" simultaneously. Tags do not drive automation in v2 — they're for filtering and at-a-glance recognition. Filter affordance on the board: show/hide by tag. Tag management lives in Linear, Loop only reads and renders.
+**Tags on tickets.** Linear's labels, synced bidirectionally, displayed as colored chips on each card. Tags describe *kind of work* (design, draft, spike, blocked) while columns describe *workflow state*. A ticket can be "In review" and tagged "design" simultaneously. Tags do not drive automation in v2 — they're for filtering and at-a-glance recognition. Filter affordance on the board: show/hide by tag. Tag management lives in Linear, Herd only reads and renders.
 
 The `tags` column is already in the v1 data model so v2 tag rendering doesn't require a schema migration.
 
@@ -459,15 +459,15 @@ Mechanics:
 
 The `AutoAction` and `AutoActionRun` tables are in the v1 schema so v2 doesn't need a migration. v1 doesn't read or write them.
 
-**Mobile companion app.** A thin client for iOS that connects to the user's running Loop instance on their Mac. Use case: leave the laptop open at home, control Loop from the phone while away.
+**Mobile companion app.** A thin client for iOS that connects to the user's running Herd instance on their Mac. Use case: leave the laptop open at home, control Herd from the phone while away.
 
 Architecture:
-- Loop runs a local HTTP + WebSocket server (loopback only by default, configurable to bind to LAN)
+- Herd runs a local HTTP + WebSocket server (loopback only by default, configurable to bind to LAN)
 - The phone app connects directly over local network when on the same Wi-Fi
-- For "anywhere" access, Loop documents Tailscale as the recommended setup. Tailscale gives the phone a private route to the Mac without exposing anything publicly. No relay server, no auth headache beyond a single shared token.
+- For "anywhere" access, Herd documents Tailscale as the recommended setup. Tailscale gives the phone a private route to the Mac without exposing anything publicly. No relay server, no auth headache beyond a single shared token.
 - The mobile app does not try to be a full IDE. It can: see the board, see ticket details, read recent Claude session output, send a prompt to a session, fire an auto-action manually, receive push notifications mirroring the Mac notifications
 - The mobile app cannot: run services, show the browser preview, edit plans (read-only), open the PR overlay (just links out to GitHub mobile)
 
 The command/event layer described above is the v1 work that makes this possible. Without it, v2 mobile becomes a rewrite. With it, v2 mobile is a thin server adapter over the same commands and events.
 
-Authentication for the mobile companion: a single shared token generated on first pairing (QR code shown on the Mac, scanned by the phone), stored in the phone's keychain. No accounts, no cloud, no Loop-the-service.
+Authentication for the mobile companion: a single shared token generated on first pairing (QR code shown on the Mac, scanned by the phone), stored in the phone's keychain. No accounts, no cloud, no Herd-the-service.

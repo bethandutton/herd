@@ -17,6 +17,8 @@ export interface TicketCard {
   status: string;
   branch_name: string | null;
   tags: string[];
+  created_at: string;
+  updated_at: string;
 }
 
 export default function App() {
@@ -107,9 +109,9 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col bg-background">
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 gap-1.5 p-1.5">
         {/* Left — Board (fixed 280px) */}
-        <div className="w-[280px] min-w-[260px] shrink-0 border-r border-border bg-background overflow-hidden">
+        <div className="w-[280px] min-w-[260px] shrink-0 bg-background rounded-xl overflow-hidden pt-2">
           <Board
             tickets={tickets}
             activeTicketId={activeTicketId}
@@ -118,13 +120,13 @@ export default function App() {
         </div>
 
         {/* Middle — Plan or Session (flexible) */}
-        <div className="flex-1 min-w-0 bg-background">
+        <div className="flex-1 min-w-0 bg-surface rounded-xl overflow-hidden">
           <MiddleColumn activeTicket={activeTicket} />
         </div>
 
         {/* Right — Local (fixed 400px) */}
         {rightColumnVisible && (
-          <div className="w-[400px] min-w-[380px] shrink-0 border-l border-border bg-background overflow-hidden">
+          <div className="w-[400px] min-w-[380px] shrink-0 bg-surface rounded-xl overflow-hidden">
             <RightColumn />
           </div>
         )}

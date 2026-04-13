@@ -2,7 +2,7 @@ export function RightColumn() {
   return (
     <div className="flex h-full flex-col">
       {/* Branch context bar */}
-      <div className="titlebar-drag-region flex h-7 shrink-0 items-center border-b border-border px-3">
+      <div className="titlebar-drag-region flex h-14 shrink-0 items-end pb-2 px-3">
         <span className="titlebar-no-drag font-mono text-xs text-muted-foreground">
           No branch
         </span>
