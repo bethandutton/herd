@@ -946,10 +946,10 @@ pub fn run() {
                                     "done"
                                 } else if approved {
                                     "ready_to_merge"
-                                } else if has_new_external_comments && ticket.status != "attention_required" {
-                                    "attention_required"
-                                } else if ticket.status == "ready_to_test" || ticket.status == "in_progress" {
-                                    "in_review"
+                                } else if has_new_external_comments && ticket.status != "human_input" {
+                                    "human_input"
+                                } else if ticket.status == "in_progress" {
+                                    "waiting_for_review"
                                 } else {
                                     &ticket.status
                                 };

@@ -329,18 +329,12 @@ pub fn map_linear_state_to_status(issue: &LinearIssue) -> &'static str {
             }
         }
         "started" => {
-            if name.contains("waiting") && name.contains("review") {
+            if name.contains("waiting") || (name.contains("review") && !name.contains("human") && !name.contains("input") && !name.contains("feedback")) {
                 "waiting_for_review"
-            } else if name.contains("review") {
-                "in_review"
-            } else if name.contains("ready to merge") || name.contains("approved") {
+            } else if name.contains("ready to merge") || name.contains("approved") || name.contains("merge") {
                 "ready_to_merge"
-            } else if name.contains("ready to test") || name.contains("qa") {
-                "ready_to_test"
-            } else if name.contains("attention") || name.contains("blocked") {
-                "attention_required"
-            } else if name.contains("planning") {
-                "planning"
+            } else if name.contains("human") || name.contains("input") || name.contains("feedback") || name.contains("attention") || name.contains("blocked") {
+                "human_input"
             } else {
                 "in_progress"
             }

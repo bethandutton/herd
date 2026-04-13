@@ -12,16 +12,13 @@ interface StatusDef {
   color: string;
 }
 const STATUS_CONFIG: Record<string, StatusDef> = {
-  attention_required:  { label: "Attention required",  sortOrder: 0, icon: "alert",         color: "#e5484d" },
-  ready_to_merge:      { label: "Ready to merge",      sortOrder: 1, icon: "three-quarter", color: "#30a46c" },
-  in_progress:         { label: "In progress",         sortOrder: 2, icon: "quarter",       color: "#e5a83b" },
-  ready_to_test:       { label: "Ready to test",       sortOrder: 3, icon: "half",          color: "#e5a83b" },
-  waiting_for_review:  { label: "Waiting for review",  sortOrder: 4, icon: "half",          color: "#6e6ade" },
-  in_review:           { label: "In review",            sortOrder: 5, icon: "three-quarter", color: "#30a46c" },
-  planning:           { label: "Planning",            sortOrder: 6, icon: "empty",         color: "#8b8d98" },
-  todo:               { label: "To do",               sortOrder: 7, icon: "empty",         color: "#8b8d98" },
-  backlog:            { label: "Backlog",              sortOrder: 8, icon: "dashed",        color: "#8b8d98" },
-  done:               { label: "Done",                 sortOrder: 9, icon: "full",          color: "#6e6ade" },
+  in_progress:         { label: "In progress",         sortOrder: 0, icon: "quarter",       color: "#e5a83b" },
+  human_input:         { label: "Human input",         sortOrder: 1, icon: "alert",         color: "#e5484d" },
+  waiting_for_review:  { label: "Waiting for review",  sortOrder: 2, icon: "half",          color: "#6e6ade" },
+  ready_to_merge:      { label: "Ready to merge",      sortOrder: 3, icon: "three-quarter", color: "#30a46c" },
+  todo:               { label: "To do",               sortOrder: 4, icon: "empty",         color: "#8b8d98" },
+  backlog:            { label: "Backlog",              sortOrder: 5, icon: "dashed",        color: "#8b8d98" },
+  done:               { label: "Done",                 sortOrder: 6, icon: "full",          color: "#6e6ade" },
 };
 
 function StatusCircle({ icon, color, size = 14 }: { icon: StatusIconType; color: string; size?: number }) {
@@ -120,8 +117,7 @@ export function Board({ tickets, activeTicketId, onSelectTicket, onRefresh }: Bo
   const [searchQuery, setSearchQuery] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set([
-    "attention_required", "ready_to_merge", "in_progress", "ready_to_test",
-    "waiting_for_review", "in_review", "planning", "todo",
+    "in_progress", "human_input", "waiting_for_review", "ready_to_merge", "todo",
   ]));
   const [sortBy, setSortBy] = useState<SortOption>("status");
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
