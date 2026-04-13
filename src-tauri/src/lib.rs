@@ -766,6 +766,84 @@ struct PrInfo {
     comment_count: i64,
 }
 
+#[derive(Clone, serde::Serialize)]
+struct PrCommentItem {
+    id: i64,
+    body: String,
+    user: PrCommentUser,
+    created_at: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct PrCommentUser {
+    login: String,
+}
+
+#[tauri::command]
+async fn get_pr_comments_list(state: tauri::State<'_, AppState>, branch_name: String) -> Result<Vec<PrCommentItem>, String> {
+    let token = match keychain::get_secret("github_api_token")? {
+        Some(t) => t,
+        None => return Ok(vec![]),
+    };
+
+    let repo = state.db.get_active_repo().map_err(|e| e.to_string())?
+        .ok_or("No active repo")?;
+
+    let (owner, repo_name) = github::parse_owner_repo(&repo.path)?;
+    let client = github::GitHubClient::new(&token);
+
+    let pr = match client.get_pr_by_branch(&owner, &repo_name, &branch_name).await? {
+        Some(pr) => pr,
+        None => return Ok(vec![]),
+    };
+
+    // Fetch both issue comments and review comments
+    let issue_comments = client.get_pr_comments(&owner, &repo_name, pr.number).await.unwrap_or_default();
+    let review_comments = client.get_pr_review_comments(&owner, &repo_name, pr.number).await.unwrap_or_default();
+
+    let mut all: Vec<PrCommentItem> = Vec::new();
+
+    for c in issue_comments {
+        all.push(PrCommentItem {
+            id: c.id,
+            body: c.body,
+            user: PrCommentUser { login: c.user.login },
+            created_at: c.created_at,
+        });
+    }
+    for c in review_comments {
+        all.push(PrCommentItem {
+            id: c.id,
+            body: c.body,
+            user: PrCommentUser { login: c.user.login },
+            created_at: c.created_at,
+        });
+    }
+
+    // Sort by created_at
+    all.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+
+    Ok(all)
+}
+
+#[tauri::command]
+fn open_pr_webview(app: tauri::AppHandle, url: String, title: String) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+
+    // Close existing PR window if open
+    if let Some(existing) = app.get_webview_window("pr-view") {
+        let _ = existing.close();
+    }
+
+    WebviewWindowBuilder::new(&app, "pr-view", tauri::WebviewUrl::External(url.parse().map_err(|e| format!("Invalid URL: {}", e))?))
+        .title(&title)
+        .inner_size(1000.0, 700.0)
+        .build()
+        .map_err(|e| format!("Failed to open PR window: {}", e))?;
+
+    Ok(())
+}
+
 #[tauri::command]
 fn get_github_repo_url(state: tauri::State<AppState>) -> Result<Option<String>, String> {
     let repo = match state.db.get_active_repo().map_err(|e| e.to_string())? {
@@ -1021,6 +1099,8 @@ pub fn run() {
             get_running_services,
             check_pr_status,
             get_github_repo_url,
+            get_pr_comments_list,
+            open_pr_webview,
             store_token,
             get_token,
             delete_token,

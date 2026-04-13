@@ -401,23 +401,34 @@ function LocalPreviewTab({ activeTicket }: { activeTicket: TicketCard | null }) 
   );
 }
 
+interface PrComment {
+  id: number;
+  body: string;
+  user: { login: string };
+  created_at: string;
+}
+
 function PrTab({ activeTicket }: { activeTicket: TicketCard | null }) {
-  const [repoUrl, setRepoUrl] = useState<string | null>(null);
   const [prInfo, setPrInfo] = useState<any>(null);
+  const [comments, setComments] = useState<PrComment[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    invoke<string | null>("get_github_repo_url")
-      .then(setRepoUrl)
-      .catch(() => setRepoUrl(null));
-  }, []);
-
-  useEffect(() => {
     setPrInfo(null);
+    setComments([]);
     if (!activeTicket?.branch_name) return;
+
     setLoading(true);
     invoke<any>("check_pr_status", { branchName: activeTicket.branch_name })
-      .then((info) => setPrInfo(info))
+      .then((info) => {
+        setPrInfo(info);
+        if (info) {
+          // Fetch comments
+          invoke<PrComment[]>("get_pr_comments_list", { branchName: activeTicket.branch_name })
+            .then(setComments)
+            .catch(() => {});
+        }
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [activeTicket?.id]);
@@ -430,63 +441,69 @@ function PrTab({ activeTicket }: { activeTicket: TicketCard | null }) {
     );
   }
 
-  const prUrl = prInfo?.url || (repoUrl ? `${repoUrl}/pulls?q=head:${encodeURIComponent(activeTicket.branch_name)}` : null);
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!prInfo) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-center space-y-1">
+          <GitPullRequest size={20} className="text-muted-foreground mx-auto" />
+          <p className="text-sm text-muted-foreground">No PR found yet</p>
+          <p className="text-xs text-muted-foreground/60 font-mono">{activeTicket.branch_name}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const formatTime = (iso: string) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
 
   return (
-    <div className="flex h-full items-center justify-center p-8">
-      <div className="max-w-md w-full space-y-6">
-        {/* PR info */}
-        {loading ? (
-          <div className="flex justify-center">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          </div>
-        ) : prInfo ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <GitPullRequest size={16} className="text-muted-foreground" />
-              <span className="font-mono text-sm text-muted-foreground">#{prInfo.number}</span>
-            </div>
-            <h2 className="text-lg font-semibold text-foreground">{prInfo.title}</h2>
-            <div className="flex items-center gap-2 flex-wrap">
-              {prInfo.approved && (
-                <span className="text-xs bg-success/20 text-success rounded-full px-2.5 py-1">Approved</span>
-              )}
-              {prInfo.changes_requested && (
-                <span className="text-xs bg-destructive/20 text-destructive rounded-full px-2.5 py-1">Changes requested</span>
-              )}
-              {prInfo.draft && (
-                <span className="text-xs bg-muted-foreground/20 text-muted-foreground rounded-full px-2.5 py-1">Draft</span>
-              )}
-              {prInfo.merged && (
-                <span className="text-xs bg-primary/20 text-primary rounded-full px-2.5 py-1">Merged</span>
-              )}
-              <span className="text-xs text-muted-foreground">{prInfo.comment_count} comments</span>
-            </div>
-          </div>
-        ) : (
-          <div className="text-center space-y-1">
-            <GitPullRequest size={20} className="text-muted-foreground mx-auto" />
-            <p className="text-sm text-muted-foreground">No PR found yet</p>
-          </div>
-        )}
-
-        {/* Branch */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>Branch:</span>
-          <span className="font-mono">{activeTicket.branch_name}</span>
+    <div className="flex h-full flex-col">
+      {/* PR header */}
+      <div className="shrink-0 p-4 border-b border-border/50 space-y-2">
+        <div className="flex items-center gap-2">
+          <GitPullRequest size={14} className="text-muted-foreground" />
+          <span className="font-mono text-[11px] text-muted-foreground">#{prInfo.number}</span>
+          {prInfo.draft && <span className="text-[10px] bg-muted-foreground/20 text-muted-foreground rounded-full px-2 py-0.5">Draft</span>}
+          {prInfo.approved && <span className="text-[10px] bg-success/20 text-success rounded-full px-2 py-0.5">Approved</span>}
+          {prInfo.changes_requested && <span className="text-[10px] bg-destructive/20 text-destructive rounded-full px-2 py-0.5">Changes requested</span>}
+          {prInfo.merged && <span className="text-[10px] bg-primary/20 text-primary rounded-full px-2 py-0.5">Merged</span>}
         </div>
+        <h2 className="text-[15px] font-semibold text-foreground">{prInfo.title}</h2>
+      </div>
 
-        {/* Open button */}
-        {prUrl && (
-          <a
-            href={prUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 w-full rounded-lg bg-surface-elevated hover:bg-border/50 px-4 py-2.5 text-sm font-medium text-foreground transition-colors duration-75"
-          >
-            <GitPullRequest size={14} />
-            Open in GitHub
-          </a>
+      {/* Comments thread */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {comments.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-4">No comments yet.</p>
+        ) : (
+          comments.map((c) => (
+            <div key={c.id} className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-foreground">{c.user.login}</span>
+                <span className="text-[11px] text-muted-foreground">{formatTime(c.created_at)}</span>
+              </div>
+              <div className="text-[13px] text-foreground leading-relaxed whitespace-pre-wrap">
+                {c.body}
+              </div>
+            </div>
+          ))
         )}
       </div>
     </div>
