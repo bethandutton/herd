@@ -197,6 +197,15 @@ impl Database {
         Ok(())
     }
 
+    pub fn update_ticket_priority(&self, ticket_id: &str, priority: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE Ticket SET priority = ?2, updated_at = datetime('now') WHERE id = ?1",
+            rusqlite::params![ticket_id, priority],
+        )?;
+        Ok(())
+    }
+
     pub fn update_ticket_branch(
         &self,
         ticket_id: &str,

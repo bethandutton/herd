@@ -185,6 +185,8 @@ struct TicketCard {
     status: String,
     branch_name: Option<String>,
     tags: Vec<String>,
+    project: Option<String>,
+    assignee: Option<String>,
     created_at: String,
     updated_at: String,
 }
@@ -232,6 +234,8 @@ async fn fetch_linear_tickets(state: tauri::State<'_, AppState>) -> Result<Vec<T
                 status: status.to_string(),
                 branch_name: issue.branch_name,
                 tags,
+                project: issue.project.as_ref().map(|p| p.name.clone()),
+                assignee: issue.assignee.as_ref().map(|a| a.name.clone()),
                 created_at: issue.created_at,
                 updated_at: issue.updated_at,
             }
@@ -259,6 +263,8 @@ fn get_tickets(state: tauri::State<AppState>) -> Result<Vec<TicketCard>, String>
             status: r.status,
             branch_name: r.branch_name,
             tags,
+            project: None, // Not stored in SQLite yet
+            assignee: None,
             created_at: r.created_at,
             updated_at: r.updated_at,
         }
@@ -309,6 +315,8 @@ async fn create_linear_ticket(
         status: status.to_string(),
         branch_name: issue.branch_name,
         tags,
+        project: issue.project.as_ref().map(|p| p.name.clone()),
+        assignee: issue.assignee.as_ref().map(|a| a.name.clone()),
         created_at: issue.created_at,
         updated_at: issue.updated_at,
     })
@@ -458,6 +466,11 @@ async fn enhance_plan(
     }
 
     Ok(text)
+}
+
+#[tauri::command]
+fn update_ticket_priority(state: tauri::State<AppState>, ticket_id: String, priority: i64) -> Result<(), String> {
+    state.db.update_ticket_priority(&ticket_id, priority).map_err(|e| e.to_string())
 }
 
 // ---- Session / Worktree commands ----
@@ -953,6 +966,7 @@ pub fn run() {
             fetch_linear_tickets,
             get_tickets,
             update_ticket_status,
+            update_ticket_priority,
             create_linear_ticket,
             verify_linear_token,
             get_ticket_description,

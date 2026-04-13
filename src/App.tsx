@@ -21,6 +21,8 @@ export interface TicketCard {
   status: string;
   branch_name: string | null;
   tags: string[];
+  project: string | null;
+  assignee: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -213,26 +215,47 @@ export default function App() {
           <div className="flex-1 min-h-0 bg-surface rounded-xl overflow-hidden flex flex-col">
             {/* Ticket title bar */}
             {activeTicket && (
-              <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-border/50">
-                <span className="font-mono text-[11px] text-muted-foreground shrink-0">
-                  {activeTicket.identifier}
-                </span>
-                <span className="text-[13px] text-foreground truncate">
-                  {activeTicket.title}
-                </span>
+              <div className="shrink-0 px-4 py-2.5 border-b border-border/50">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[11px] text-muted-foreground shrink-0">
+                    {activeTicket.identifier}
+                  </span>
+                  <span className="text-[13px] text-foreground truncate">
+                    {activeTicket.title}
+                  </span>
+                </div>
+                {(activeTicket.project || activeTicket.assignee || activeTicket.branch_name) && (
+                  <div className="flex items-center gap-3 mt-1">
+                    {activeTicket.project && (
+                      <span className="text-[11px] text-muted-foreground">
+                        {activeTicket.project}
+                      </span>
+                    )}
+                    {activeTicket.assignee && (
+                      <span className="text-[11px] text-muted-foreground">
+                        {activeTicket.assignee}
+                      </span>
+                    )}
+                    {activeTicket.branch_name && (
+                      <span className="font-mono text-[10px] text-muted-foreground/60">
+                        {activeTicket.branch_name}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
             {/* Tab content */}
             <div className="flex-1 min-h-0 overflow-hidden">
             {activeTab === "plan" && (
-              <MiddleColumn activeTicket={activeTicket} hideToolbar />
+              <LinearTicketTab activeTicket={activeTicket} />
             )}
             {activeTab === "session" && (
               <MiddleColumn activeTicket={activeTicket} hideToolbar sessionOnly />
             )}
             {activeTab === "local" && (
-              <RightColumn activeTicket={activeTicket} />
+              <LocalPreviewTab activeTicket={activeTicket} />
             )}
             {activeTab === "pr" && (
               <PrTab activeTicket={activeTicket} />
@@ -270,6 +293,58 @@ export default function App() {
 }
 
 // PR tab — shows PR info or iframe
+// Linear Ticket tab — embeds the Linear issue page
+function LinearTicketTab({ activeTicket }: { activeTicket: TicketCard | null }) {
+  if (!activeTicket) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-muted-foreground">Select a ticket to view.</p>
+      </div>
+    );
+  }
+
+  const linearUrl = `https://linear.app/issue/${activeTicket.identifier}`;
+  return (
+    <iframe
+      src={linearUrl}
+      className="h-full w-full border-0"
+      title="Linear ticket"
+    />
+  );
+}
+
+// Local Preview tab — localhost iframe
+function LocalPreviewTab({ activeTicket }: { activeTicket: TicketCard | null }) {
+  const [previewPort, setPreviewPort] = useState(3000);
+
+  useEffect(() => {
+    invoke<{ preview_port: number } | null>("get_active_repo").then((repo) => {
+      if (repo) setPreviewPort(repo.preview_port);
+    }).catch(() => {});
+  }, []);
+
+  if (!activeTicket) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-muted-foreground">Select a ticket to preview.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="shrink-0 px-4 py-1.5 border-b border-border/50 flex items-center gap-2">
+        <span className="font-mono text-[11px] text-muted-foreground">localhost:{previewPort}</span>
+      </div>
+      <iframe
+        src={`http://localhost:${previewPort}`}
+        className="flex-1 w-full border-0 bg-white"
+        title="Local preview"
+      />
+    </div>
+  );
+}
+
 function PrTab({ activeTicket }: { activeTicket: TicketCard | null }) {
   const [prInfo, setPrInfo] = useState<any>(null);
   const [loading, setLoading] = useState(false);

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Search, X, Filter, Check, AlertTriangle, Copy, ExternalLink, ArrowUpDown, Loader2 } from "lucide-react";
+import { Plus, Search, X, Filter, Check, AlertTriangle, Copy, ExternalLink, ArrowUpDown, Loader2, GitBranch, ChevronRight as ChevronRightIcon, List, LayoutGrid } from "lucide-react";
 import type { TicketCard } from "@/App";
 
 // Status config: priority for sort order, icon style, color
@@ -113,6 +113,7 @@ interface RepoInfo {
 
 export function Board({ tickets, activeTicketId, onSelectTicket }: BoardProps) {
   const [repoName, setRepoName] = useState("Herd");
+  const [viewMode, setViewMode] = useState<"list" | "board">("list");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
@@ -231,6 +232,14 @@ export function Board({ tickets, activeTicketId, onSelectTicket }: BoardProps) {
           {repoName}
         </span>
         <div className="titlebar-no-drag flex items-center gap-1">
+          {/* View toggle */}
+          <button
+            onClick={() => setViewMode(viewMode === "list" ? "board" : "list")}
+            className="flex h-6 w-6 items-center justify-center rounded hover:bg-surface-elevated text-muted-foreground hover:text-foreground transition-colors duration-75"
+            title={viewMode === "list" ? "Switch to board view" : "Switch to list view"}
+          >
+            {viewMode === "list" ? <LayoutGrid size={14} /> : <List size={14} />}
+          </button>
           {/* Filter */}
           <div className="relative" ref={filterRef}>
             <button
@@ -392,24 +401,90 @@ export function Board({ tickets, activeTicketId, onSelectTicket }: BoardProps) {
         </div>
       )}
 
-      {/* Flat ticket list */}
+      {/* Ticket list / board */}
       <div className="flex-1 overflow-y-auto" style={{ padding: "var(--space-list-padding)" }}>
+        {viewMode === "list" ? (
+          <div className="flex flex-col" style={{ gap: "var(--space-card-gap)" }}>
+            {sortedTickets.map((ticket) => (
+              <TicketCardView
+                key={ticket.id}
+                ticket={ticket}
+                isActive={ticket.id === activeTicketId}
+                onClick={() => onSelectTicket(ticket.id)}
+              />
+            ))}
+            {sortedTickets.length === 0 && (
+              <p className="text-xs text-muted-foreground/50 text-center py-8">
+                No tickets match.
+              </p>
+            )}
+          </div>
+        ) : (
+          /* Kanban board view */
+          <div className="flex flex-col gap-3">
+            {Object.entries(STATUS_CONFIG)
+              .sort((a, b) => a[1].sortOrder - b[1].sortOrder)
+              .map(([key, config]) => {
+                const colTickets = sortedTickets.filter((t) => t.status === key);
+                if (colTickets.length === 0) return null;
+                return (
+                  <BoardSection
+                    key={key}
+                    statusKey={key}
+                    config={config}
+                    tickets={colTickets}
+                    activeTicketId={activeTicketId}
+                    onSelectTicket={onSelectTicket}
+                  />
+                );
+              })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BoardSection({
+  statusKey,
+  config,
+  tickets,
+  activeTicketId,
+  onSelectTicket,
+}: {
+  statusKey: string;
+  config: StatusDef;
+  tickets: TicketCard[];
+  activeTicketId: string | null;
+  onSelectTicket: (id: string) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  return (
+    <div>
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="flex w-full items-center gap-1.5 px-1 py-1 hover:text-foreground transition-colors duration-75"
+      >
+        <StatusCircle icon={config.icon} color={config.color} />
+        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          {config.label}
+        </span>
+        <span className="text-[11px] text-muted-foreground ml-auto">{tickets.length}</span>
+      </button>
+      {!collapsed && (
         <div className="flex flex-col" style={{ gap: "var(--space-card-gap)" }}>
-          {sortedTickets.map((ticket) => (
+          {tickets.map((ticket) => (
             <TicketCardView
               key={ticket.id}
               ticket={ticket}
               isActive={ticket.id === activeTicketId}
               onClick={() => onSelectTicket(ticket.id)}
+              hideStatusIcon
             />
           ))}
-          {sortedTickets.length === 0 && (
-            <p className="text-xs text-muted-foreground/50 text-center py-8">
-              No tickets match.
-            </p>
-          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -455,10 +530,12 @@ function TicketCardView({
   ticket,
   isActive,
   onClick,
+  hideStatusIcon,
 }: {
   ticket: TicketCard;
   isActive: boolean;
   onClick: () => void;
+  hideStatusIcon?: boolean;
 }) {
   const statusDef = STATUS_CONFIG[ticket.status];
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -508,7 +585,7 @@ function TicketCardView({
         {/* Row 1: Status icon + ID + priority */}
         <div className="flex items-center justify-between mb-0.5">
           <div className="flex items-center gap-1.5 min-w-0">
-            {statusDef && (
+            {statusDef && !hideStatusIcon && (
               <span className="relative group">
                 <StatusCircle icon={statusDef.icon} color={statusDef.color} />
                 <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-1.5 whitespace-nowrap rounded bg-zinc-900 dark:bg-zinc-800 px-2 py-1 text-[11px] text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-100 z-50">
@@ -526,13 +603,22 @@ function TicketCardView({
         <p className="text-[13px] text-foreground leading-snug line-clamp-2">
           {ticket.title}
         </p>
+        {/* Row 3: Branch name */}
+        {ticket.branch_name && (
+          <div className="flex items-center gap-1 mt-1">
+            <GitBranch size={10} className="text-muted-foreground/50 shrink-0" />
+            <span className="font-mono text-[10px] text-muted-foreground/50 truncate">
+              {ticket.branch_name}
+            </span>
+          </div>
+        )}
       </button>
 
       {/* Right-click context menu */}
       {contextMenu && (
         <div
           ref={menuRef}
-          className="fixed z-50 w-44 rounded-md border border-border bg-surface-elevated py-1 shadow-lg"
+          className="fixed z-50 w-52 rounded-md border border-border bg-surface-elevated py-1 shadow-lg"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
@@ -549,6 +635,51 @@ function TicketCardView({
             <ExternalLink size={12} className="text-muted-foreground" />
             Open in Linear
           </button>
+
+          <div className="my-1 border-t border-border" />
+
+          {/* Status changes */}
+          <div className="px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Move to</div>
+          {Object.entries(STATUS_CONFIG)
+            .sort((a, b) => a[1].sortOrder - b[1].sortOrder)
+            .filter(([key]) => key !== ticket.status)
+            .map(([key, config]) => (
+              <button
+                key={key}
+                onClick={() => {
+                  invoke("update_ticket_status", { ticketId: ticket.id, status: key }).catch(() => {});
+                  setContextMenu(null);
+                }}
+                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-foreground hover:bg-primary/5 transition-colors duration-75"
+              >
+                <StatusCircle icon={config.icon} color={config.color} />
+                {config.label}
+              </button>
+            ))}
+
+          <div className="my-1 border-t border-border" />
+
+          {/* Priority changes */}
+          <div className="px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Priority</div>
+          {[
+            { value: 1, label: "Urgent" },
+            { value: 2, label: "High" },
+            { value: 3, label: "Medium" },
+            { value: 4, label: "Low" },
+            { value: 0, label: "None" },
+          ].map((p) => (
+            <button
+              key={p.value}
+              onClick={() => {
+                invoke("update_ticket_priority", { ticketId: ticket.id, priority: p.value }).catch(() => {});
+                setContextMenu(null);
+              }}
+              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-foreground hover:bg-primary/5 transition-colors duration-75"
+            >
+              <span className="w-3 text-center">{ticket.priority === p.value ? <Check size={10} className="text-primary" /> : null}</span>
+              {p.label}
+            </button>
+          ))}
         </div>
       )}
     </>

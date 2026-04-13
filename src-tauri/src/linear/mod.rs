@@ -19,10 +19,22 @@ pub struct LinearIssue {
     #[serde(rename = "branchName")]
     pub branch_name: Option<String>,
     pub cycle: Option<CycleRef>,
+    pub project: Option<ProjectRef>,
+    pub assignee: Option<AssigneeRef>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectRef {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssigneeRef {
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -283,6 +295,12 @@ impl LinearClient {
                                 }
                                 cycle {
                                     id
+                                }
+                                project {
+                                    name
+                                }
+                                assignee {
+                                    name
                                 }
                                 createdAt
                                 updatedAt
