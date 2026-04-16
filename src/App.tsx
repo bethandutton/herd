@@ -2,16 +2,28 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Toaster, toast } from "sonner";
-import { SquareKanban, GitPullRequest, Globe, Bot, ChevronLeft, ChevronRight } from "lucide-react";
-import { Board } from "@/components/board/Board";
-import { MiddleColumn } from "@/components/middle/MiddleColumn";
+import {
+  ListChecks,
+  GitPullRequest,
+  Globe,
+  SquareTerminal,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  ChevronDown,
+  Plus,
+  Trash2,
+  Settings as SettingsIcon,
+} from "lucide-react";
+import { WorktreeSidebar } from "@/components/sidebar/WorktreeSidebar";
+import { TaskView } from "@/components/middle/TaskView";
 import { Onboarding } from "@/components/onboarding/Onboarding";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { CommandPalette } from "@/components/CommandPalette";
 import { UpdateChecker } from "@/components/UpdateChecker";
 
 type AppView = "loading" | "onboarding" | "main";
-type Tab = "plan" | "session" | "local" | "pr";
+export type Tab = "plan" | "session" | "local" | "pr";
 
 export interface TicketCard {
   id: string;
@@ -27,7 +39,16 @@ export interface TicketCard {
   updated_at: string;
 }
 
-const PLAN_STATUSES = ["backlog", "todo", "planning"];
+export interface RepoInfo {
+  id: string;
+  name: string;
+  path: string;
+  worktrees_dir: string;
+  primary_branch: string;
+  preview_port: number;
+}
+
+const WORKING_STATUSES = ["in_progress", "human_input", "waiting_for_review", "ready_to_merge"];
 
 export default function App() {
   const [view, setView] = useState<AppView>("loading");
@@ -36,70 +57,54 @@ export default function App() {
   const [tickets, setTickets] = useState<TicketCard[]>([]);
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("plan");
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const isNavigating = useRef(false);
+  const [repo, setRepo] = useState<RepoInfo | null>(null);
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const projectMenuRef = useRef<HTMLDivElement>(null);
 
-  const navigateToTicket = useCallback((id: string) => {
-    if (isNavigating.current) return;
-    setActiveTicketId(id);
-    setHistory((prev) => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push(id);
-      return newHistory;
-    });
-    setHistoryIndex((i) => i + 1);
-  }, [historyIndex]);
+  const refreshTasks = useCallback(async () => {
+    try {
+      const next = await invoke<TicketCard[]>("get_tickets");
+      setTickets(next);
+    } catch (e) {
+      console.error("Failed to load tasks:", e);
+    }
+  }, []);
 
-  const goBack = useCallback(() => {
-    if (historyIndex <= 0) return;
-    isNavigating.current = true;
-    const newIndex = historyIndex - 1;
-    setHistoryIndex(newIndex);
-    setActiveTicketId(history[newIndex]);
-    setTimeout(() => { isNavigating.current = false; }, 0);
-  }, [history, historyIndex]);
-
-  const goForward = useCallback(() => {
-    if (historyIndex >= history.length - 1) return;
-    isNavigating.current = true;
-    const newIndex = historyIndex + 1;
-    setHistoryIndex(newIndex);
-    setActiveTicketId(history[newIndex]);
-    setTimeout(() => { isNavigating.current = false; }, 0);
-  }, [history, historyIndex]);
+  const refreshRepo = useCallback(async () => {
+    try {
+      const r = await invoke<RepoInfo | null>("get_active_repo");
+      setRepo(r);
+    } catch {
+      setRepo(null);
+    }
+  }, []);
 
   useEffect(() => {
     invoke<boolean>("has_repos")
-      .then((hasRepos) => {
-        setView(hasRepos ? "main" : "onboarding");
-      })
-      .catch(() => {
-        setView("onboarding");
-      });
+      .then((hasRepos) => setView(hasRepos ? "main" : "onboarding"))
+      .catch(() => setView("onboarding"));
   }, []);
 
-  // Fetch tickets on load, then listen for background polling updates
   useEffect(() => {
     if (view !== "main") return;
-
-    invoke<TicketCard[]>("fetch_linear_tickets")
-      .then(setTickets)
-      .catch((e) => {
-        console.error("Failed to fetch tickets:", e);
-        toast.error("Failed to fetch tickets from Linear");
-      });
-
-    const unlisten = listen("tickets_updated", () => {
-      invoke<TicketCard[]>("get_tickets")
-        .then(setTickets)
-        .catch((e) => console.error("Failed to get tickets:", e));
-    });
-
+    refreshTasks();
+    refreshRepo();
+    const unlisten = listen("tickets_updated", refreshTasks);
     return () => { unlisten.then((f) => f()); };
-  }, [view]);
+  }, [view, refreshTasks, refreshRepo]);
 
-  // Listen for macOS menu events
+  // Close project menu on outside click
+  useEffect(() => {
+    if (!projectMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (projectMenuRef.current && !projectMenuRef.current.contains(e.target as Node)) {
+        setProjectMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [projectMenuOpen]);
+
   useEffect(() => {
     const unlisten1 = listen("open_settings", () => setSettingsOpen(true));
     return () => { unlisten1.then((f) => f()); };
@@ -107,59 +112,40 @@ export default function App() {
 
   const activeTicket = tickets.find((t) => t.id === activeTicketId) || null;
 
-  const WORKING_STATUSES = ["in_progress", "human_input", "waiting_for_review", "ready_to_merge"];
-
-  // When switching tickets, keep current tab if it's still enabled, otherwise default to Linear Ticket
   useEffect(() => {
     if (!activeTicket) return;
-    // "plan" (Linear Ticket) is always available when a ticket is selected
-    // Only force-switch if current tab would be disabled
     const hasBranchNow = !!activeTicket.branch_name;
     const needsBranch = activeTab === "pr" || activeTab === "local";
-    if (needsBranch && !hasBranchNow) {
-      setActiveTab("plan");
-    }
+    if (needsBranch && !hasBranchNow) setActiveTab("plan");
   }, [activeTicketId]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 
-      if (e.metaKey && e.key === "k") {
-        e.preventDefault();
-        setCommandPaletteOpen((v) => !v);
-        return;
-      }
-      if (e.metaKey && e.key === ",") {
-        e.preventDefault();
-        setSettingsOpen(true);
-        return;
-      }
+      if (e.metaKey && e.key === "k") { e.preventDefault(); setCommandPaletteOpen((v) => !v); return; }
+      if (e.metaKey && e.key === ",") { e.preventDefault(); setSettingsOpen(true); return; }
       if (e.key === "Escape") {
         if (commandPaletteOpen) setCommandPaletteOpen(false);
         else if (settingsOpen) setSettingsOpen(false);
         return;
       }
-
-      // Tab switching: Cmd+1/2/3/4
       if (e.metaKey && e.key === "1") { e.preventDefault(); setActiveTab("plan"); return; }
       if (e.metaKey && e.key === "2") { e.preventDefault(); setActiveTab("session"); return; }
       if (e.metaKey && e.key === "3") { e.preventDefault(); setActiveTab("local"); return; }
       if (e.metaKey && e.key === "4") { e.preventDefault(); setActiveTab("pr"); return; }
 
-      // Board navigation (j/k)
       if (!isInput && !commandPaletteOpen && !settingsOpen) {
         if (e.key === "j" || e.key === "k") {
           e.preventDefault();
           const currentIndex = tickets.findIndex((t) => t.id === activeTicketId);
           if (e.key === "j") {
             const next = Math.min(currentIndex + 1, tickets.length - 1);
-            if (tickets[next]) navigateToTicket(tickets[next].id);
+            if (tickets[next]) setActiveTicketId(tickets[next].id);
           } else {
             const prev = Math.max(currentIndex - 1, 0);
-            if (tickets[prev]) navigateToTicket(tickets[prev].id);
+            if (tickets[prev]) setActiveTicketId(tickets[prev].id);
           }
         }
       }
@@ -168,14 +154,39 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [commandPaletteOpen, settingsOpen, tickets, activeTicketId]);
 
-  const handleOnboardingComplete = useCallback(() => {
+  const handleOnboardingComplete = useCallback(async () => {
+    await refreshRepo();
+    await refreshTasks();
     setView("main");
-  }, []);
+  }, [refreshRepo, refreshTasks]);
 
   const handleRerunSetup = useCallback(() => {
     setSettingsOpen(false);
     setView("onboarding");
   }, []);
+
+  const handleCreateBlankTask = useCallback(async (t: TicketCard) => {
+    await refreshTasks();
+    setActiveTicketId(t.id);
+    setActiveTab("plan");
+  }, [refreshTasks]);
+
+  const handleImportedTask = useCallback(async (t: TicketCard) => {
+    await refreshTasks();
+    setActiveTicketId(t.id);
+    setActiveTab("plan");
+  }, [refreshTasks]);
+
+  const handleDeleteTask = useCallback(async (id: string) => {
+    if (!confirm("Delete this task?")) return;
+    try {
+      await invoke("delete_task", { ticketId: id });
+      if (activeTicketId === id) setActiveTicketId(null);
+      await refreshTasks();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }, [activeTicketId, refreshTasks]);
 
   if (view === "loading") {
     return (
@@ -189,108 +200,142 @@ export default function App() {
     return <Onboarding onComplete={handleOnboardingComplete} />;
   }
 
-  // Determine which tabs are available based on ticket state
   const hasBranch = !!activeTicket?.branch_name && WORKING_STATUSES.includes(activeTicket?.status || "");
   const hasTicket = !!activeTicket;
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; enabled: boolean; disabledReason: string }[] = [
-    { key: "plan", label: "Linear Ticket", icon: <SquareKanban size={13} />, enabled: hasTicket, disabledReason: "Select a ticket to view" },
-    { key: "pr", label: "GitHub PR", icon: <GitPullRequest size={13} />, enabled: hasBranch, disabledReason: "Start work on a ticket to see its PR" },
-    { key: "local", label: "Local Preview", icon: <Globe size={13} />, enabled: hasBranch, disabledReason: "Start work on a ticket to enable local preview" },
-    { key: "session", label: "Agent", icon: <Bot size={13} />, enabled: hasBranch || (hasTicket && PLAN_STATUSES.includes(activeTicket!.status)), disabledReason: "Move ticket to Planning first to start an agent session" },
+    { key: "plan",    label: "Task",          icon: <ListChecks size={13} />,     enabled: hasTicket, disabledReason: "Select a task to view" },
+    { key: "session", label: "Terminal",      icon: <SquareTerminal size={13} />, enabled: hasTicket, disabledReason: "Select a task first" },
+    { key: "local",   label: "Local Preview", icon: <Globe size={13} />,          enabled: hasBranch, disabledReason: "Start work on a task to enable local preview" },
+    { key: "pr",      label: "GitHub PR",     icon: <GitPullRequest size={13} />, enabled: hasBranch, disabledReason: "Start work on a task to see its PR" },
   ];
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <div className="flex flex-1 min-h-0 gap-1.5 p-1.5">
-        {/* Left — Board */}
-        <div className="w-[280px] min-w-[260px] shrink-0 bg-background rounded-xl overflow-hidden flex flex-col">
-          {/* Nav buttons — right of traffic lights */}
-          <div className="titlebar-drag-region flex items-center gap-0.5 px-[76px] pt-2 pb-0 shrink-0">
-            <button
-              onClick={goBack}
-              disabled={historyIndex <= 0}
-              className="titlebar-no-drag flex h-7 w-7 items-center justify-center rounded-lg hover:bg-surface-elevated text-muted-foreground hover:text-foreground disabled:text-muted-foreground/20 disabled:hover:bg-transparent transition-colors duration-75"
-              title="Back"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <button
-              onClick={goForward}
-              disabled={historyIndex >= history.length - 1}
-              className="titlebar-no-drag flex h-7 w-7 items-center justify-center rounded-lg hover:bg-surface-elevated text-muted-foreground hover:text-foreground disabled:text-muted-foreground/20 disabled:hover:bg-transparent transition-colors duration-75"
-              title="Forward"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-          <Board
-            tickets={tickets}
-            activeTicketId={activeTicketId}
-            onSelectTicket={navigateToTicket}
-            onRefresh={async () => {
-              const updated = await invoke<TicketCard[]>("fetch_linear_tickets");
-              setTickets(updated);
-            }}
-          />
-          </div>
-        </div>
-
-        {/* Main area */}
-        <div className="flex-1 min-w-0 flex flex-col">
-          {/* Tab row — sits above the content panel */}
-          <div className="titlebar-drag-region flex shrink-0 items-end gap-1 pt-2 pb-1">
-            {activeTicket ? (
-              tabs.map((tab) => (
-                <div key={tab.key} className="titlebar-no-drag relative group">
-                  <button
-                    onClick={() => tab.enabled && setActiveTab(tab.key)}
-                    disabled={!tab.enabled}
-                    className={`flex items-center gap-2 px-4 py-2 text-[13px] font-medium rounded-xl transition-colors duration-75 ${
-                      !tab.enabled
-                        ? "text-muted-foreground/30 cursor-not-allowed"
-                        : activeTab === tab.key
-                          ? "bg-surface text-foreground"
-                          : "text-muted-foreground hover:text-foreground hover:bg-surface/50"
-                    }`}
-                  >
-                    <span className={!tab.enabled ? "text-muted-foreground/30" : activeTab === tab.key ? "text-primary" : "text-muted-foreground"}>{tab.icon}</span>
-                    {tab.label}
-                  </button>
-                  {!tab.enabled && (
-                    <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 whitespace-nowrap rounded bg-zinc-900 dark:bg-zinc-800 px-2 py-1 text-[11px] text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-100 z-50">
-                      {tab.disabledReason}
-                    </span>
-                  )}
+    <div className="flex h-screen flex-col bg-background text-foreground">
+      {/* Top header — full-width, draggable, hairline bottom */}
+      <header data-tauri-drag-region className="hairline-b flex shrink-0 items-center h-11 pl-[84px] pr-3">
+        {/* Project picker */}
+        <div className="titlebar-no-drag relative" ref={projectMenuRef}>
+          <button
+            onClick={() => setProjectMenuOpen(!projectMenuOpen)}
+            className="group flex items-center gap-1.5 h-7 pl-2 pr-1.5 rounded-md text-[13px] font-medium text-foreground hover:bg-surface transition-colors"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-success shadow-[0_0_6px_0_var(--success)]" aria-hidden="true" />
+            <span className="truncate max-w-[200px] tracking-tight">{repo?.name || "Herd"}</span>
+            <ChevronDown size={11} className="text-muted-foreground-soft group-hover:text-muted-foreground transition-colors" />
+          </button>
+          {projectMenuOpen && (
+            <div className="absolute left-0 top-9 z-50 w-72 rounded-lg bg-surface-elevated py-1 shadow-2xl ring-1 ring-divider/40">
+              <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-[0.08em] text-muted-foreground-soft font-medium">Current project</div>
+              {repo && (
+                <div className="px-3 pb-2">
+                  <div className="text-[13px] text-foreground font-medium">{repo.name}</div>
+                  <div className="text-[11px] text-muted-foreground-soft font-mono truncate mt-0.5">{repo.path}</div>
                 </div>
-              ))
-            ) : (
-              <div className="h-8" />
-            )}
-          </div>
-
-          {/* Content panel */}
-          <div className="flex-1 min-h-0 bg-surface rounded-xl overflow-hidden flex flex-col">
-            {/* Ticket title bar */}
-
-            {/* Tab content */}
-            <div className="flex-1 min-h-0 overflow-hidden">
-            {activeTab === "plan" && (
-              <MiddleColumn activeTicket={activeTicket} hideToolbar planOnly />
-            )}
-            {activeTab === "session" && (
-              <MiddleColumn activeTicket={activeTicket} hideToolbar sessionOnly />
-            )}
-            {activeTab === "local" && (
-              <LocalPreviewTab activeTicket={activeTicket} />
-            )}
-            {activeTab === "pr" && (
-              <PrTab activeTicket={activeTicket} />
-            )}
+              )}
+              <div className="mx-1 h-px bg-divider" />
+              <button
+                onClick={() => { setProjectMenuOpen(false); handleRerunSetup(); }}
+                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12.5px] text-foreground hover:bg-primary-soft transition-colors"
+              >
+                <Plus size={12} className="text-muted-foreground" /> Switch / add project
+              </button>
+              <button
+                onClick={() => { setProjectMenuOpen(false); setSettingsOpen(true); }}
+                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12.5px] text-foreground hover:bg-primary-soft transition-colors"
+              >
+                <SettingsIcon size={12} className="text-muted-foreground" /> Settings
+                <span className="ml-auto text-[10px] text-muted-foreground-soft font-mono">⌘,</span>
+              </button>
+              {repo && (
+                <>
+                  <div className="mx-1 h-px bg-divider" />
+                  <button
+                    onClick={async () => {
+                      setProjectMenuOpen(false);
+                      if (!confirm(`Close project "${repo.name}"? Worktrees and tasks stay on disk.`)) return;
+                      try { handleRerunSetup(); } catch (e) { toast.error(String(e)); }
+                    }}
+                    className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12.5px] text-destructive hover:bg-destructive/10 transition-colors"
+                  >
+                    <Trash2 size={12} /> Close project
+                  </button>
+                </>
+              )}
             </div>
-          </div>
+          )}
         </div>
+
+        <div className="titlebar-no-drag flex items-center ml-2">
+          <button
+            disabled
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground-soft/50 disabled:cursor-default"
+            title="Back"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <button
+            disabled
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground-soft/50 disabled:cursor-default"
+            title="Forward"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+
+        {/* Hairline separator before tabs */}
+        {activeTicket && (
+          <div className="mx-2 h-4 w-px bg-divider" />
+        )}
+
+        {/* Tab row inline */}
+        {activeTicket && (
+          <nav className="titlebar-no-drag flex items-center gap-0.5">
+            {tabs.map((tab, i) => (
+              <div key={tab.key} className="relative group">
+                <button
+                  onClick={() => tab.enabled && setActiveTab(tab.key)}
+                  disabled={!tab.enabled}
+                  className={`flex items-center gap-1.5 px-2.5 h-7 text-[12.5px] rounded-md transition-all duration-100 tracking-tight ${
+                    !tab.enabled
+                      ? "text-muted-foreground-soft/40 cursor-not-allowed"
+                      : activeTab === tab.key
+                        ? "bg-surface text-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-surface/70"
+                  }`}
+                >
+                  <span className={!tab.enabled ? "opacity-40" : activeTab === tab.key ? "text-primary" : "text-muted-foreground-soft"}>{tab.icon}</span>
+                  {tab.label}
+                  <span className={`ml-1 text-[10px] font-mono tabular-nums ${
+                    activeTab === tab.key ? "text-muted-foreground" : "text-muted-foreground-soft/60"
+                  }`}>⌘{i + 1}</span>
+                </button>
+              </div>
+            ))}
+          </nav>
+        )}
+
+        <div className="flex-1" />
+      </header>
+
+      {/* Main — flat, full-width, sidebar flush */}
+      <div className="flex flex-1 min-h-0">
+        <WorktreeSidebar
+          tasks={tickets}
+          activeTaskId={activeTicketId}
+          onSelectTask={setActiveTicketId}
+          onCreateBlankTask={handleCreateBlankTask}
+          onImportedTask={handleImportedTask}
+          onDeleteTask={handleDeleteTask}
+          onTasksChanged={refreshTasks}
+        />
+        <main data-theme="light" className="flex-1 min-w-0 bg-background text-foreground">
+          <TaskView
+            activeTask={activeTicket}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+          />
+        </main>
       </div>
 
       <SettingsPanel
@@ -303,10 +348,9 @@ export default function App() {
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         tickets={tickets}
-        onSelectTicket={navigateToTicket}
+        onSelectTicket={setActiveTicketId}
         onOpenSettings={() => setSettingsOpen(true)}
-        onToggleRightColumn={() => {}}
-        onNewTicket={() => {}}
+        onNewTicket={() => { /* picker is in sidebar now */ }}
       />
 
       <UpdateChecker />
@@ -314,83 +358,72 @@ export default function App() {
       <Toaster
         position="bottom-right"
         toastOptions={{
-          duration: 2000,
-          className: "!bg-surface-elevated !border-border !text-foreground !text-xs",
+          duration: 2500,
+          className: "!bg-surface-elevated !text-foreground !text-xs !ring-1 !ring-divider",
         }}
       />
     </div>
   );
 }
 
-// PR tab — shows PR info or iframe
-// Local Preview tab — localhost iframe
-function LocalPreviewTab({ activeTicket }: { activeTicket: TicketCard | null }) {
-  const [previewPort, setPreviewPort] = useState(3000);
-
-  useEffect(() => {
-    invoke<{ preview_port: number } | null>("get_active_repo").then((repo) => {
-      if (repo) setPreviewPort(repo.preview_port);
-    }).catch(() => {});
-  }, []);
-
-  if (!activeTicket) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground">Select a ticket to preview.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex h-full flex-col">
-      <div className="shrink-0 px-4 py-1.5 border-b border-border/50 flex items-center gap-2">
-        <span className="font-mono text-[11px] text-muted-foreground">localhost:{previewPort}</span>
-      </div>
-      <iframe
-        src={`http://localhost:${previewPort}`}
-        className="flex-1 w-full border-0 bg-white"
-        title="Local preview"
-      />
-    </div>
-  );
-}
-
-interface PrComment {
-  id: number;
-  body: string;
-  user: { login: string };
-  created_at: string;
-}
-
-function PrTab({ activeTicket }: { activeTicket: TicketCard | null }) {
-  const [prInfo, setPrInfo] = useState<any>(null);
-  const [comments, setComments] = useState<PrComment[]>([]);
+// Reusable PR tab — embedded real browser via Tauri child webview
+export function PrTab({ activeTicket, hidden }: { activeTicket: TicketCard | null; hidden: boolean }) {
+  const [prInfo, setPrInfo] = useState<{ number: number; title: string; url: string } | null>(null);
   const [loading, setLoading] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setPrInfo(null);
-    setComments([]);
     if (!activeTicket?.branch_name) return;
 
     setLoading(true);
-    invoke<any>("check_pr_status", { branchName: activeTicket.branch_name })
-      .then((info) => {
-        setPrInfo(info);
-        if (info) {
-          // Fetch comments
-          invoke<PrComment[]>("get_pr_comments_list", { branchName: activeTicket.branch_name })
-            .then(setComments)
-            .catch(() => {});
-        }
-      })
+    invoke<{ number: number; title: string; url: string } | null>("check_pr_status", {
+      branchName: activeTicket.branch_name,
+    })
+      .then((info) => setPrInfo(info))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [activeTicket?.id]);
 
+  useEffect(() => {
+    if (!prInfo?.url || !panelRef.current || hidden) {
+      invoke("hide_pr_webview").catch(() => {});
+      return;
+    }
+
+    const el = panelRef.current;
+    const updateBounds = () => {
+      const r = el.getBoundingClientRect();
+      invoke("embed_pr_webview", {
+        url: prInfo.url,
+        x: r.left, y: r.top, width: r.width, height: r.height,
+      }).catch((e) => console.error("embed_pr_webview failed:", e));
+    };
+
+    updateBounds();
+
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      invoke("resize_pr_webview", {
+        x: r.left, y: r.top, width: r.width, height: r.height,
+      }).catch(() => {});
+    });
+    ro.observe(el);
+
+    const onResize = () => updateBounds();
+    window.addEventListener("resize", onResize);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", onResize);
+      invoke("hide_pr_webview").catch(() => {});
+    };
+  }, [prInfo?.url, hidden]);
+
   if (!activeTicket?.branch_name) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground">No branch for this ticket.</p>
+        <p className="text-sm text-muted-foreground">No branch for this task.</p>
       </div>
     );
   }
@@ -415,51 +448,55 @@ function PrTab({ activeTicket }: { activeTicket: TicketCard | null }) {
     );
   }
 
-  const formatTime = (iso: string) => {
-    const d = new Date(iso);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays}d ago`;
-  };
-
   return (
     <div className="flex h-full flex-col">
-      {/* PR header */}
-      <div className="shrink-0 p-4 border-b border-border/50 space-y-2">
-        <div className="flex items-center gap-2">
-          <GitPullRequest size={14} className="text-muted-foreground" />
-          <span className="font-mono text-[11px] text-muted-foreground">#{prInfo.number}</span>
-          {prInfo.draft && <span className="text-[10px] bg-muted-foreground/20 text-muted-foreground rounded-full px-2 py-0.5">Draft</span>}
-          {prInfo.approved && <span className="text-[10px] bg-success/20 text-success rounded-full px-2 py-0.5">Approved</span>}
-          {prInfo.changes_requested && <span className="text-[10px] bg-destructive/20 text-destructive rounded-full px-2 py-0.5">Changes requested</span>}
-          {prInfo.merged && <span className="text-[10px] bg-primary/20 text-primary rounded-full px-2 py-0.5">Merged</span>}
-        </div>
-        <h2 className="text-[15px] font-semibold text-foreground">{prInfo.title}</h2>
+      <div className="hairline-b shrink-0 px-5 py-2 flex items-center gap-2.5">
+        <GitPullRequest size={13} className="text-muted-foreground-soft" />
+        <span className="font-mono text-[11px] text-muted-foreground-soft tabular-nums">#{prInfo.number}</span>
+        <span className="text-[13px] text-foreground truncate flex-1 tracking-tight">{prInfo.title}</span>
+        <button
+          onClick={() => window.open(prInfo.url, "_blank")}
+          className="flex items-center gap-1 h-6 px-1.5 text-[11px] text-muted-foreground hover:text-foreground rounded-md hover:bg-surface transition-colors"
+          title="Open in external browser"
+        >
+          <ExternalLink size={11} />
+        </button>
       </div>
-
-      {/* Comments thread */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {comments.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-4">No comments yet.</p>
-        ) : (
-          comments.map((c) => (
-            <div key={c.id} className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-foreground">{c.user.login}</span>
-                <span className="text-[11px] text-muted-foreground">{formatTime(c.created_at)}</span>
-              </div>
-              <div className="text-[13px] text-foreground leading-relaxed whitespace-pre-wrap">
-                {c.body}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+      <div ref={panelRef} className="flex-1 bg-white" />
     </div>
   );
 }
+
+// Local preview
+export function LocalPreviewTab({ activeTicket }: { activeTicket: TicketCard | null }) {
+  const [previewPort, setPreviewPort] = useState(3000);
+
+  useEffect(() => {
+    invoke<{ preview_port: number } | null>("get_active_repo").then((repo) => {
+      if (repo) setPreviewPort(repo.preview_port);
+    }).catch(() => {});
+  }, []);
+
+  if (!activeTicket) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-muted-foreground">Select a task to preview.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="hairline-b shrink-0 px-5 py-2 flex items-center gap-2">
+        <Globe size={13} className="text-muted-foreground-soft" />
+        <span className="font-mono text-[11px] text-muted-foreground-soft">localhost:{previewPort}</span>
+      </div>
+      <iframe
+        src={`http://localhost:${previewPort}`}
+        className="flex-1 w-full border-0 bg-white"
+        title="Local preview"
+      />
+    </div>
+  );
+}
+

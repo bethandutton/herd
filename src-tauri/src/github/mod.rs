@@ -111,34 +111,6 @@ impl GitHubClient {
         self.get(&url).await
     }
 
-    /// Get review comments (inline code comments) on a PR
-    pub async fn get_pr_review_comments(
-        &self,
-        owner: &str,
-        repo: &str,
-        pr_number: i64,
-    ) -> Result<Vec<Comment>, String> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/pulls/{}/comments",
-            owner, repo, pr_number
-        );
-        self.get(&url).await
-    }
-
-    /// Get a specific PR (to check merged status)
-    pub async fn get_pr(
-        &self,
-        owner: &str,
-        repo: &str,
-        pr_number: i64,
-    ) -> Result<PullRequest, String> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/pulls/{}",
-            owner, repo, pr_number
-        );
-        self.get(&url).await
-    }
-
     /// Get the authenticated user's login
     pub async fn get_viewer_login(&self) -> Result<String, String> {
         let user: GitHubUser = self.get("https://api.github.com/user").await?;

@@ -16,32 +16,25 @@ interface SettingsPanelProps {
 export function SettingsPanel({ open, onClose, onRerunSetup }: SettingsPanelProps) {
   const { theme, density, fontSize, setTheme, setDensity, setFontSize } = useTheme();
 
-  const [linearToken, setLinearToken] = useState("");
   const [githubToken, setGithubToken] = useState("");
-  const [anthropicKey, setAnthropicKey] = useState("");
+  const [linearToken, setLinearToken] = useState("");
   const [repoPath, setRepoPath] = useState("");
   const [worktreesDir, setWorktreesDir] = useState("");
   const [primaryBranch, setPrimaryBranch] = useState("main");
   const [previewPort, setPreviewPort] = useState("3000");
   const [copyFiles, setCopyFiles] = useState(".env*");
-  const [mirrorToLinear, setMirrorToLinear] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"appearance" | "connections" | "project">("appearance");
   const [projectRules, setProjectRules] = useState("");
 
   useEffect(() => {
     if (!open) return;
 
-    // Load tokens (masked)
-    invoke<string | null>("get_token", { key: "linear_api_token" }).then((val) => {
-      if (val) setLinearToken("••••••••" + val.slice(-4));
-    }).catch(() => {});
-
     invoke<string | null>("get_token", { key: "github_api_token" }).then((val) => {
       if (val) setGithubToken("••••••••" + val.slice(-4));
     }).catch(() => {});
 
-    invoke<string | null>("get_token", { key: "anthropic_api_key" }).then((val) => {
-      if (val) setAnthropicKey("••••••••" + val.slice(-4));
+    invoke<string | null>("get_token", { key: "linear_api_token" }).then((val) => {
+      if (val) setLinearToken("••••••••" + val.slice(-4));
     }).catch(() => {});
 
     // Load repo settings
@@ -56,10 +49,6 @@ export function SettingsPanel({ open, onClose, onRerunSetup }: SettingsPanelProp
 
     invoke<string | null>("get_setting", { key: "copy_files" }).then((val) => {
       if (val) setCopyFiles(val);
-    }).catch(() => {});
-
-    invoke<string | null>("get_setting", { key: "mirror_to_linear" }).then((val) => {
-      setMirrorToLinear(val === "true");
     }).catch(() => {});
 
     invoke<string | null>("get_setting", { key: "project_rules" }).then((val) => {
@@ -157,7 +146,7 @@ export function SettingsPanel({ open, onClose, onRerunSetup }: SettingsPanelProp
               <div className="flex items-center justify-between">
                 <label className="text-xs text-muted-foreground">Linear API token</label>
                 <a
-                  href="https://linear.app/settings/api"
+                  href="https://linear.app/settings/account/security"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[11px] text-primary hover:opacity-80"
@@ -170,6 +159,7 @@ export function SettingsPanel({ open, onClose, onRerunSetup }: SettingsPanelProp
                 onChange={(e) => setLinearToken(e.target.value)}
                 placeholder="lin_api_..."
               />
+              <p className="text-[11px] text-muted-foreground/70">Optional. Lets you pick tasks from Linear when creating one.</p>
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -188,25 +178,7 @@ export function SettingsPanel({ open, onClose, onRerunSetup }: SettingsPanelProp
                 onChange={(e) => setGithubToken(e.target.value)}
                 placeholder="ghp_..."
               />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs text-muted-foreground">Anthropic API key</label>
-                <a
-                  href="https://console.anthropic.com/settings/keys"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] text-primary hover:opacity-80"
-                >
-                  Get key
-                </a>
-              </div>
-              <PasswordInput
-                value={anthropicKey}
-                onChange={(e) => setAnthropicKey(e.target.value)}
-                placeholder="sk-ant-..."
-              />
-              <p className="text-[11px] text-muted-foreground/70">Used for the "Enhance with Claude" plan feature.</p>
+              <p className="text-[11px] text-muted-foreground/70">Optional. Enables the PR tab.</p>
             </div>
           </section>
 
@@ -249,17 +221,6 @@ export function SettingsPanel({ open, onClose, onRerunSetup }: SettingsPanelProp
                 onChange={(e) => setCopyFiles(e.target.value)}
                 placeholder=".env*"
               />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={mirrorToLinear}
-                onChange={(e) => setMirrorToLinear(e.target.checked)}
-                className="h-3.5 w-3.5 rounded border-border"
-              />
-              <label className="text-xs text-muted-foreground">
-                Mirror status changes back to Linear
-              </label>
             </div>
           </section>
           </>)}
@@ -313,15 +274,11 @@ export function SettingsPanel({ open, onClose, onRerunSetup }: SettingsPanelProp
             Re-run setup
           </Button>
           <Button size="sm" onClick={async () => {
-            // Save tokens if they were changed (not masked)
-            if (linearToken && !linearToken.startsWith("••")) {
-              await invoke("store_token", { key: "linear_api_token", value: linearToken }).catch(() => {});
-            }
             if (githubToken && !githubToken.startsWith("••")) {
               await invoke("store_token", { key: "github_api_token", value: githubToken }).catch(() => {});
             }
-            if (anthropicKey && !anthropicKey.startsWith("••")) {
-              await invoke("store_token", { key: "anthropic_api_key", value: anthropicKey }).catch(() => {});
+            if (linearToken && !linearToken.startsWith("••")) {
+              await invoke("store_token", { key: "linear_api_token", value: linearToken }).catch(() => {});
             }
             onClose();
           }}>

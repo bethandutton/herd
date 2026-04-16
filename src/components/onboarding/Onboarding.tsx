@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { FolderOpen } from "lucide-react";
 
-type Step = "welcome" | "linear" | "github" | "repo" | "done";
+type Step = "welcome" | "github" | "repo" | "done";
 
 interface RepoInfo {
   name: string;
@@ -22,42 +22,18 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Linear
-  const [linearToken, setLinearToken] = useState("");
-  const [linearVerified, setLinearVerified] = useState(false);
-
-  // GitHub
   const [githubToken, setGithubToken] = useState("");
 
-  // Repo
   const [repoPath, setRepoPath] = useState("");
   const [repoInfo, setRepoInfo] = useState<RepoInfo | null>(null);
 
-  const verifyLinear = async () => {
+  const saveGithub = async () => {
     setError(null);
     setLoading(true);
     try {
-      await invoke("store_token", {
-        key: "linear_api_token",
-        value: linearToken,
-      });
-      setLinearVerified(true);
-      setStep("github");
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const verifyGithub = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      await invoke("store_token", {
-        key: "github_api_token",
-        value: githubToken,
-      });
+      if (githubToken.trim()) {
+        await invoke("store_token", { key: "github_api_token", value: githubToken });
+      }
       setStep("repo");
     } catch (e) {
       setError(String(e));
@@ -101,130 +77,56 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   };
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-background">
-      <div className="w-full max-w-md rounded-lg border border-border bg-surface p-8">
+    <div data-tauri-drag-region className="flex h-screen w-screen items-center justify-center bg-background relative overflow-hidden">
+      {/* Ambient warm glow */}
+      <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-primary opacity-[0.05] blur-3xl" />
+      <div className="pointer-events-none absolute bottom-0 right-0 h-96 w-96 rounded-full bg-primary opacity-[0.03] blur-3xl" />
+
+      <div className="relative w-full max-w-md px-10 py-8">
         {step === "welcome" && (
-          <div className="space-y-4 text-center">
-            <div className="flex justify-center">
-              <img src="/app-icon.png" alt="Herd" className="h-16 w-16" />
-            </div>
-            <h1 className="text-base font-semibold tracking-tight">
-              Welcome to Herd
+          <div className="space-y-6 text-center">
+            <h1 className="font-display text-6xl tracking-[-0.02em] text-foreground">
+              Herd<span className="font-display-italic text-primary">.</span>
             </h1>
-            <p className="text-sm text-muted-foreground">
-              Herd manages your in-flight Linear tickets across Git worktrees,
-              each with its own background Claude Code session. Let's set up
-              your connections.
+            <p className="text-[14px] text-muted-foreground leading-[1.6] max-w-sm mx-auto">
+              A workspace for running terminals across Git worktrees.
+              Each task gets its own branch and terminal. Spawn Claude Code, Codex,
+              or any agent you like, and switch between them without losing flow.
             </p>
-            <Button onClick={() => setStep("linear")} className="w-full">
+            <Button onClick={() => setStep("github")} className="w-full">
               Get started
             </Button>
           </div>
         )}
 
-        {step === "linear" && (
-          <div className="space-y-4">
-            <h2 className="text-base font-semibold tracking-tight">
-              Connect Linear
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Paste your Linear personal API key. Create one at{" "}
-              <a
-                href="https://linear.app/settings/api"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline underline-offset-2 hover:opacity-80"
-              >
-                Linear Settings → Account → Security
-              </a>.
-            </p>
-            <div className="rounded-md border border-border bg-background px-3 py-2">
-              <p className="text-[11px] font-medium text-muted-foreground mb-1">Required access:</p>
-              <ul className="text-[11px] text-muted-foreground space-y-0.5">
-                <li>Read issues, labels, and cycles assigned to you</li>
-                <li>Read and write issue descriptions (for plan editor)</li>
-                <li>Create new issues</li>
-              </ul>
-            </div>
-            <PasswordInput
-              placeholder="lin_api_..."
-              value={linearToken}
-              onChange={(e) => setLinearToken(e.target.value)}
-            />
-            {error && (
-              <p className="text-xs text-destructive">{error}</p>
-            )}
-            {linearVerified && (
-              <p className="text-xs text-success">Connected</p>
-            )}
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setStep("welcome")}
-              >
-                Back
-              </Button>
-              <Button
-                onClick={verifyLinear}
-                disabled={!linearToken.trim() || loading}
-                className="flex-1"
-              >
-                {loading ? "Verifying..." : "Connect"}
-              </Button>
-            </div>
-          </div>
-        )}
-
         {step === "github" && (
           <div className="space-y-4">
-            <h2 className="text-base font-semibold tracking-tight">
-              Connect GitHub
+            <h2 className="font-display text-3xl tracking-[-0.015em]">
+              Connect GitHub <span className="font-display-italic text-muted-foreground-soft text-xl">optional</span>
             </h2>
-            <p className="text-sm text-muted-foreground">
-              Paste a GitHub personal access token (classic). Create one at{" "}
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Paste a token with <code className="font-mono bg-surface/60 px-1 rounded text-[12px]">repo</code> scope
+              to see PR status and comments in Herd.{" "}
               <a
                 href="https://github.com/settings/tokens/new?scopes=repo&description=Herd"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary underline underline-offset-2 hover:opacity-80"
               >
-                GitHub Settings → Developer settings → Tokens
-              </a>.
+                Create one →
+              </a>
             </p>
-            <div className="rounded-md border border-border bg-background px-3 py-2">
-              <p className="text-[11px] font-medium text-muted-foreground mb-1">Required scopes:</p>
-              <ul className="text-[11px] text-muted-foreground space-y-0.5">
-                <li><code className="font-mono bg-surface px-1 rounded">repo</code> — read PR state, reviews, comments, and CI status</li>
-              </ul>
-              <p className="text-[11px] text-muted-foreground/70 mt-1.5">Herd only reads from GitHub in v1. It never writes, merges, or comments.</p>
-            </div>
             <PasswordInput
               placeholder="ghp_..."
               value={githubToken}
               onChange={(e) => setGithubToken(e.target.value)}
             />
-            {error && (
-              <p className="text-xs text-destructive">{error}</p>
-            )}
+            {error && <p className="text-xs text-destructive">{error}</p>}
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setStep("linear")}
-              >
-                Back
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setStep("repo")}
-              >
-                Skip
-              </Button>
-              <Button
-                onClick={verifyGithub}
-                disabled={!githubToken.trim() || loading}
-                className="flex-1"
-              >
-                {loading ? "Verifying..." : "Connect"}
+              <Button variant="outline" onClick={() => setStep("welcome")}>Back</Button>
+              <Button variant="ghost" onClick={() => setStep("repo")}>Skip</Button>
+              <Button onClick={saveGithub} disabled={loading} className="flex-1">
+                {loading ? "Saving..." : "Continue"}
               </Button>
             </div>
           </div>
@@ -232,17 +134,15 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
         {step === "repo" && (
           <div className="space-y-4">
-            <h2 className="text-base font-semibold tracking-tight">
-              Select your repo
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Pick the folder of your local Git clone. Herd will auto-detect
-              the branch and set up worktrees alongside it.
+            <h2 className="font-display text-3xl tracking-[-0.015em]">Pick your project</h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Choose a local Git clone. Herd auto-detects the default branch and creates
+              worktrees alongside it.
             </p>
 
             <button
               onClick={pickFolder}
-              className="flex w-full items-center gap-3 rounded-md border border-border bg-background px-3 py-3 text-left hover:bg-surface-elevated transition-colors duration-75"
+              className="flex w-full items-center gap-3 rounded-md bg-surface-elevated/60 px-3 py-3 text-left hover:bg-surface-elevated transition-colors"
             >
               <FolderOpen size={18} className="shrink-0 text-muted-foreground" />
               {repoPath ? (
@@ -253,37 +153,17 @@ export function Onboarding({ onComplete }: OnboardingProps) {
             </button>
 
             {repoInfo && (
-              <div className="rounded-md border border-border bg-background px-3 py-2 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-muted-foreground">Name</span>
-                  <span className="font-mono text-xs text-foreground">{repoInfo.name}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-muted-foreground">Branch</span>
-                  <span className="font-mono text-xs text-foreground">{repoInfo.primary_branch}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-muted-foreground">Worktrees</span>
-                  <span className="font-mono text-xs text-foreground truncate ml-4">{repoInfo.worktrees_dir}</span>
-                </div>
+              <div className="rounded-md bg-surface-elevated/40 px-3 py-2 space-y-1">
+                <Row label="Name" value={repoInfo.name} mono />
+                <Row label="Branch" value={repoInfo.primary_branch} mono />
+                <Row label="Worktrees" value={repoInfo.worktrees_dir} mono />
               </div>
             )}
 
-            {error && (
-              <p className="text-xs text-destructive">{error}</p>
-            )}
+            {error && <p className="text-xs text-destructive">{error}</p>}
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setStep("github")}
-              >
-                Back
-              </Button>
-              <Button
-                onClick={setupRepo}
-                disabled={!repoInfo || loading}
-                className="flex-1"
-              >
+              <Button variant="outline" onClick={() => setStep("github")}>Back</Button>
+              <Button onClick={setupRepo} disabled={!repoInfo || loading} className="flex-1">
                 {loading ? "Setting up..." : "Complete setup"}
               </Button>
             </div>
@@ -291,19 +171,24 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         )}
 
         {step === "done" && (
-          <div className="space-y-4">
-            <h2 className="text-base font-semibold tracking-tight">
-              You're all set
+          <div className="space-y-5 text-center">
+            <h2 className="font-display text-4xl tracking-[-0.02em]">
+              All <span className="font-display-italic text-primary">set.</span>
             </h2>
-            <p className="text-sm text-muted-foreground">
-              Herd is ready. Your tokens are stored securely.
-            </p>
-            <Button onClick={onComplete} className="w-full">
-              Open Herd
-            </Button>
+            <p className="text-[14px] text-muted-foreground">Your workspace is ready.</p>
+            <Button onClick={onComplete} className="w-full">Open Herd</Button>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <span className={`text-xs text-foreground truncate ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
 }

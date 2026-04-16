@@ -131,34 +131,95 @@ impl Database {
         Ok(())
     }
 
-    /// Upsert a ticket from Linear data. Preserves local-only fields (worktree_path, etc.)
-    pub fn upsert_ticket(
+    pub fn next_task_number(&self, repo_id: &str) -> Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT identifier FROM Ticket WHERE repo_id = ?1 AND identifier LIKE 'T-%'")?;
+        let ids = stmt.query_map([repo_id], |row| row.get::<_, Option<String>>(0))?;
+        let mut max_num = 0i64;
+        for id in ids.flatten().flatten() {
+            if let Some(num) = id.trim_start_matches("T-").parse::<i64>().ok() {
+                if num > max_num { max_num = num; }
+            }
+        }
+        Ok(max_num + 1)
+    }
+
+    pub fn create_task(
         &self,
         id: &str,
         identifier: &str,
         repo_id: &str,
         title: &str,
-        status: &str,
+        description: &str,
         priority: i64,
-        tags: &str,
-        branch_name: Option<&str>,
-        created_at: &str,
-        updated_at: &str,
     ) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO Ticket (id, identifier, repo_id, title, status, priority, tags, branch_name, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-             ON CONFLICT(id) DO UPDATE SET
-                identifier = excluded.identifier,
-                title = excluded.title,
-                status = CASE WHEN Ticket.worktree_path IS NOT NULL THEN Ticket.status ELSE excluded.status END,
-                priority = excluded.priority,
-                tags = excluded.tags,
-                branch_name = COALESCE(excluded.branch_name, Ticket.branch_name),
-                updated_at = excluded.updated_at",
-            rusqlite::params![id, identifier, repo_id, title, status, priority, tags, branch_name, created_at, updated_at],
+            "INSERT INTO Ticket (id, identifier, repo_id, title, plan_markdown, status, priority, tags)
+             VALUES (?1, ?2, ?3, ?4, ?5, 'planning', ?6, '[]')",
+            rusqlite::params![id, identifier, repo_id, title, description, priority],
         )?;
+        Ok(())
+    }
+
+    pub fn get_task_description(&self, ticket_id: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let result = conn
+            .query_row(
+                "SELECT plan_markdown FROM Ticket WHERE id = ?1",
+                [ticket_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .ok()
+            .flatten();
+        Ok(result)
+    }
+
+    pub fn set_task_description(&self, ticket_id: &str, description: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE Ticket SET plan_markdown = ?2, updated_at = datetime('now') WHERE id = ?1",
+            rusqlite::params![ticket_id, description],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_ticket_title(&self, ticket_id: &str, title: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE Ticket SET title = ?2, updated_at = datetime('now') WHERE id = ?1",
+            rusqlite::params![ticket_id, title],
+        )?;
+        Ok(())
+    }
+
+    pub fn import_task(
+        &self,
+        id: &str,
+        identifier: &str,
+        repo_id: &str,
+        title: &str,
+        branch_name: Option<&str>,
+        priority: i64,
+    ) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO Ticket (id, identifier, repo_id, title, status, priority, tags, branch_name)
+             VALUES (?1, ?2, ?3, ?4, 'todo', ?5, '[]', ?6)
+             ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                identifier = excluded.identifier,
+                priority = excluded.priority,
+                branch_name = COALESCE(excluded.branch_name, Ticket.branch_name),
+                updated_at = datetime('now')",
+            rusqlite::params![id, identifier, repo_id, title, priority, branch_name],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_task(&self, ticket_id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM Ticket WHERE id = ?1", [ticket_id])?;
         Ok(())
     }
 

@@ -101,7 +101,6 @@ impl SessionManager {
 
         let mut cmd = CommandBuilder::new(claude_path);
         cmd.cwd(worktree_path);
-        // Set TERM for proper terminal behavior
         cmd.env("TERM", "xterm-256color");
 
         let child = pair

@@ -1,49 +1,56 @@
 @import "tailwindcss";
 
 /* ============================================================
-   Herd — CSS Variable Theming
-   Dark mode default, Linear-style density
+   Herd — Quiet Editorial
+   Warm-neutral palette, saffron accent, editorial serif titles
    ============================================================ */
 
-/* Font imports */
+/* Editorial display serif — a single punctuation mark amid SF Pro */
 @font-face {
-  font-family: "Inter";
+  font-family: "Instrument Serif";
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 400;
   font-display: swap;
-  src: url("https://rsms.me/inter/font-files/InterVariable.woff2")
-    format("woff2");
+  src: url("https://fonts.gstatic.com/s/instrumentserif/v4/jizDREVIvGwH5OjiZmX9r5vvDHMCMkkjUhrR.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("https://fonts.gstatic.com/s/instrumentserif/v4/jizBREVIvGwH5OjiZmX9r5vvDH7svA0oRvvRUA.woff2") format("woff2");
 }
 
-
-/* ---- Dark theme (default) ---- */
-:root[data-theme="dark"],
+/* ---- Dark theme (default) — warm neutral with saffron ---- */
+[data-theme="dark"],
 :root {
-  --background: oklch(0.13 0.005 270);
-  --surface: oklch(0.18 0.005 270);
-  --surface-elevated: oklch(0.23 0.005 270);
-  --foreground: oklch(0.95 0 0);
-  --muted-foreground: oklch(0.65 0 0);
-  --border: oklch(0.25 0.005 270);
-  --border-strong: oklch(0.32 0.005 270);
+  --background: oklch(0.145 0.006 60);
+  --surface: oklch(0.186 0.006 60);
+  --surface-elevated: oklch(0.232 0.008 60);
+  --foreground: oklch(0.965 0.002 60);
+  --muted-foreground: oklch(0.62 0.012 60);
+  --muted-foreground-soft: oklch(0.48 0.012 60);
+  --border: oklch(0.218 0.006 60);
+  --border-strong: oklch(0.30 0.008 60);
+  --divider: oklch(0.20 0.005 60);
 
-  --primary: oklch(0.7 0.12 240);
-  --primary-foreground: oklch(0.98 0 0);
+  /* Saffron — warm, grown-up */
+  --primary: oklch(0.80 0.14 70);
+  --primary-soft: oklch(0.80 0.14 70 / 0.12);
+  --primary-foreground: oklch(0.14 0.02 70);
 
-  --success: oklch(0.65 0.18 145);
-  --warning: oklch(0.7 0.15 70);
-  --destructive: oklch(0.6 0.2 25);
-  --info: oklch(0.65 0.15 240);
+  --success: oklch(0.72 0.14 150);
+  --warning: oklch(0.80 0.14 75);
+  --destructive: oklch(0.66 0.19 25);
+  --info: oklch(0.70 0.12 240);
 
-  --ring: oklch(0.7 0.12 240);
+  --ring: oklch(0.80 0.14 70);
 
-  /* Density scale: compact=0.85, comfortable=1.0, spacious=1.15 */
   --density-scale: 1;
 
-  /* Semantic spacing tokens (multiplied by density) */
   --space-card-px: calc(12px * var(--density-scale));
-  --space-card-py: calc(8px * var(--density-scale));
-  --space-card-gap: calc(4px * var(--density-scale));
+  --space-card-py: calc(7px * var(--density-scale));
+  --space-card-gap: calc(2px * var(--density-scale));
   --space-list-padding: calc(4px * var(--density-scale));
   --space-button-y: calc(6px * var(--density-scale));
   --space-button-x: calc(12px * var(--density-scale));
@@ -52,87 +59,134 @@
   color-scheme: dark;
 }
 
-/* ---- Light theme ---- */
-:root[data-theme="light"] {
-  --background: oklch(0.93 0.005 270);
-  --surface: oklch(1 0 0);
-  --surface-elevated: oklch(1 0 0);
-  --foreground: oklch(0.15 0 0);
-  --muted-foreground: oklch(0.45 0 0);
-  --border: oklch(0.88 0.005 270);
-  --border-strong: oklch(0.78 0.005 270);
+/* ---- Light theme (scoped override — also redeclares tailwind @theme mirror vars) ---- */
+[data-theme="light"] {
+  --background: oklch(1 0 0);
+  --surface: oklch(0.985 0.003 60);
+  --surface-elevated: oklch(0.97 0.004 60);
+  --foreground: oklch(0.18 0.008 60);
+  --muted-foreground: oklch(0.48 0.01 60);
+  --muted-foreground-soft: oklch(0.62 0.008 60);
+  --border: oklch(0.92 0.005 60);
+  --border-strong: oklch(0.82 0.006 60);
+  --divider: oklch(0.93 0.004 60);
 
-  --primary: oklch(0.55 0.15 240);
+  --primary: oklch(0.60 0.17 55);
+  --primary-soft: oklch(0.60 0.17 55 / 0.10);
   --primary-foreground: oklch(0.98 0 0);
 
-  --success: oklch(0.55 0.18 145);
-  --warning: oklch(0.6 0.15 70);
-  --destructive: oklch(0.5 0.2 25);
-  --info: oklch(0.55 0.15 240);
+  --success: oklch(0.55 0.16 150);
+  --warning: oklch(0.64 0.16 70);
+  --destructive: oklch(0.52 0.20 25);
+  --info: oklch(0.55 0.14 240);
 
-  --ring: oklch(0.55 0.15 240);
+  --ring: oklch(0.60 0.17 55);
+
+  /* Mirror tailwind @theme tokens inside this scope so bg-background, text-foreground etc. resolve locally */
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted-foreground-soft: var(--muted-foreground-soft);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-divider: var(--divider);
+  --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-destructive: var(--destructive);
+  --color-info: var(--info);
+  --color-ring: var(--ring);
 
   color-scheme: light;
 }
 
 /* ---- Density levels ---- */
-:root[data-density="compact"] {
-  --density-scale: 0.85;
-}
-:root[data-density="comfortable"] {
-  --density-scale: 1;
-}
-:root[data-density="spacious"] {
-  --density-scale: 1.15;
-}
+:root[data-density="compact"]     { --density-scale: 0.85; }
+:root[data-density="comfortable"] { --density-scale: 1; }
+:root[data-density="spacious"]    { --density-scale: 1.15; }
 
-/* ---- Font size levels ---- */
-:root[data-font-size="small"] {
-  font-size: 13px;
-}
-:root[data-font-size="medium"] {
-  font-size: 14px;
-}
-:root[data-font-size="large"] {
-  font-size: 15px;
-}
+:root[data-font-size="small"]  { font-size: 13px; }
+:root[data-font-size="medium"] { font-size: 14px; }
+:root[data-font-size="large"]  { font-size: 15px; }
 
-/* ---- Base styles ---- */
-* {
-  border-color: var(--border);
+/* ---- Base ---- */
+html, body {
+  background-color: var(--background);
 }
 
 body {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-  background-color: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
   margin: 0;
   padding: 0;
+  letter-spacing: -0.005em;
+  font-feature-settings: "ss01", "cv11";
 }
 
-/* Tauri window drag region for macOS traffic lights */
-.titlebar-drag-region {
-  -webkit-app-region: drag;
-  padding-top: env(safe-area-inset-top, 0px);
+/* Editorial serif for task titles and hero numerals */
+.font-display {
+  font-family: "Instrument Serif", "Iowan Old Style", Georgia, ui-serif, serif;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+.font-display-italic {
+  font-family: "Instrument Serif", "Iowan Old Style", Georgia, ui-serif, serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
 }
 
-.titlebar-no-drag {
-  -webkit-app-region: no-drag;
+.font-mono,
+.w-md-editor-text-pre,
+.w-md-editor-text-pre > code {
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, "Consolas", monospace;
+  font-feature-settings: "calt" 0;
 }
 
-/* Hide scrollbars but keep scrolling */
-::-webkit-scrollbar {
-  display: none;
+/* OpenType niceties */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
-* {
-  scrollbar-width: none;
+/* Tauri drag region */
+.titlebar-drag-region { -webkit-app-region: drag; }
+.titlebar-no-drag     { -webkit-app-region: no-drag; }
+
+/* Scrollbars — subtle track, visible thumb on hover */
+::-webkit-scrollbar { width: 0; height: 0; }
+* { scrollbar-width: none; }
+
+/* Thin top/bottom hairline used in place of border */
+.hairline-b { box-shadow: inset 0 -1px 0 0 var(--divider); }
+.hairline-t { box-shadow: inset 0 1px 0 0 var(--divider); }
+.hairline-r { box-shadow: inset -1px 0 0 0 var(--divider); }
+.hairline-l { box-shadow: inset 1px 0 0 0 var(--divider); }
+
+/* Accent stripe used on active sidebar rows */
+.accent-stripe::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: var(--primary);
+  border-radius: 0 1px 1px 0;
 }
 
-/* Markdown editor theme overrides */
+/* Selection */
+::selection {
+  background: oklch(0.80 0.14 70 / 0.28);
+  color: var(--foreground);
+}
+
+/* Markdown editor */
 .w-md-editor {
   background: transparent !important;
   border: none !important;
@@ -140,36 +194,28 @@ body {
   color: var(--foreground) !important;
 }
 .w-md-editor-toolbar {
-  background: var(--surface) !important;
-  border-bottom: 1px solid var(--border) !important;
-  border-radius: 8px !important;
-  margin-bottom: 8px !important;
+  background: transparent !important;
+  border-bottom: none !important;
+  box-shadow: inset 0 -1px 0 0 var(--divider) !important;
+  border-radius: 0 !important;
+  margin-bottom: 12px !important;
+  padding: 4px 0 !important;
 }
-.w-md-editor-toolbar li button {
-  color: var(--muted-foreground) !important;
-}
-.w-md-editor-toolbar li button:hover {
-  color: var(--foreground) !important;
-}
+.w-md-editor-toolbar li button { color: var(--muted-foreground) !important; }
+.w-md-editor-toolbar li button:hover { color: var(--foreground) !important; }
 .w-md-editor-text-input,
 .w-md-editor-text {
   color: var(--foreground) !important;
-  font-size: 15px !important;
+  font-size: 15.5px !important;
   line-height: 1.7 !important;
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", ui-sans-serif, system-ui, sans-serif !important;
 }
 .w-md-editor-text-pre,
 .w-md-editor-text-pre > code {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif !important;
-  font-size: 15px !important;
+  font-size: 15.5px !important;
 }
 
-/* Mono font utility */
-.font-mono {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-}
-
-/* Respect reduced motion */
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;
@@ -177,16 +223,19 @@ body {
   }
 }
 
-/* Tailwind v4 theme integration */
+/* Tailwind v4 integration */
 @theme {
   --color-background: var(--background);
   --color-surface: var(--surface);
   --color-surface-elevated: var(--surface-elevated);
   --color-foreground: var(--foreground);
   --color-muted-foreground: var(--muted-foreground);
+  --color-muted-foreground-soft: var(--muted-foreground-soft);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
+  --color-divider: var(--divider);
   --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
   --color-primary-foreground: var(--primary-foreground);
   --color-success: var(--success);
   --color-warning: var(--warning);

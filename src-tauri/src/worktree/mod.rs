@@ -150,16 +150,3 @@ pub fn copy_env_files(source: &str, target: &str, patterns: &[String]) -> Result
     Ok(())
 }
 
-pub fn remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), String> {
-    let output = Command::new("git")
-        .args(["worktree", "remove", "--force", worktree_path])
-        .current_dir(repo_path)
-        .output()
-        .map_err(|e| format!("Failed to run git worktree remove: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git worktree remove failed: {}", stderr));
-    }
-    Ok(())
-}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Search, ArrowRight, Settings, Plus, Eye } from "lucide-react";
+import { Search, ArrowRight, Settings, Plus } from "lucide-react";
 import type { TicketCard } from "@/App";
 
 interface CommandPaletteProps {
@@ -8,7 +8,6 @@ interface CommandPaletteProps {
   tickets: TicketCard[];
   onSelectTicket: (id: string) => void;
   onOpenSettings: () => void;
-  onToggleRightColumn: () => void;
   onNewTicket: () => void;
 }
 
@@ -26,7 +25,6 @@ export function CommandPalette({
   tickets,
   onSelectTicket,
   onOpenSettings,
-  onToggleRightColumn,
   onNewTicket,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
@@ -44,9 +42,8 @@ export function CommandPalette({
 
   const actions: CommandItem[] = useMemo(() => [
     { id: "settings", label: "Open Settings", sublabel: "⌘,", icon: <Settings size={14} />, action: () => { onOpenSettings(); onClose(); } },
-    { id: "new-ticket", label: "New Ticket", sublabel: "⌘N", icon: <Plus size={14} />, action: () => { onNewTicket(); onClose(); } },
-    { id: "toggle-right", label: "Toggle Right Panel", sublabel: "⌘B", icon: <Eye size={14} />, action: () => { onToggleRightColumn(); onClose(); } },
-  ], [onOpenSettings, onNewTicket, onToggleRightColumn, onClose]);
+    { id: "new-ticket", label: "New Task", sublabel: "⌘N", icon: <Plus size={14} />, action: () => { onNewTicket(); onClose(); } },
+  ], [onOpenSettings, onNewTicket, onClose]);
 
   const filteredItems: CommandItem[] = useMemo(() => {
     const q = query.toLowerCase();
