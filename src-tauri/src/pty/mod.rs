@@ -1,9 +1,14 @@
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
+
+fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
 
 const BUFFER_MAX_LINES: usize = 10_000;
 
@@ -59,13 +64,16 @@ impl ScrollbackBuffer {
 }
 
 struct Session {
-    #[allow(dead_code)]
     ticket_id: String,
     writer: Box<dyn Write + Send>,
     #[allow(dead_code)]
     child: Box<dyn portable_pty::Child + Send>,
     buffer: Arc<Mutex<ScrollbackBuffer>>,
     unread: Arc<AtomicBool>,
+    /// Last time the agent produced output (ms since epoch)
+    last_output_ms: Arc<AtomicU64>,
+    /// Whether the user has "visited" since the last idle transition
+    visited: Arc<AtomicBool>,
 }
 
 pub struct SessionManager {
@@ -120,9 +128,13 @@ impl SessionManager {
 
         let buffer = Arc::new(Mutex::new(ScrollbackBuffer::new(scrollback_path)));
         let unread = Arc::new(AtomicBool::new(false));
+        let last_output_ms = Arc::new(AtomicU64::new(now_ms()));
+        let visited = Arc::new(AtomicBool::new(true));
 
         let buffer_clone = buffer.clone();
         let unread_clone = unread.clone();
+        let last_output_clone = last_output_ms.clone();
+        let visited_clone = visited.clone();
         let sid = session_id.to_string();
 
         // Reader thread: reads PTY output, buffers it, emits events
@@ -137,6 +149,9 @@ impl SessionManager {
                             buf.append(data);
                         }
                         unread_clone.store(true, Ordering::Relaxed);
+                        last_output_clone.store(now_ms(), Ordering::Relaxed);
+                        // Any fresh output means the attention has not yet been acknowledged
+                        visited_clone.store(false, Ordering::Relaxed);
 
                         // Emit event to frontend
                         let event_name = format!("session_output_{}", sid);
@@ -153,6 +168,8 @@ impl SessionManager {
             child,
             buffer,
             unread,
+            last_output_ms,
+            visited,
         };
 
         self.sessions
@@ -242,5 +259,39 @@ impl SessionManager {
         // This is a no-op for now; xterm.js will handle its own viewport
         let _ = (session_id, rows, cols);
         Ok(())
+    }
+
+    /// Activity snapshot for each session.
+    /// `thinking`  = agent produced output in the last THINKING_MS
+    /// `attention` = agent was thinking, now idle, and user hasn't visited
+    /// `idle`      = settled state; user has acknowledged, or never active
+    pub fn activity_snapshot(&self) -> Vec<(String, String, String)> {
+        const THINKING_MS: u64 = 2500;
+        let now = now_ms();
+        let mut out = Vec::new();
+        if let Ok(sessions) = self.sessions.lock() {
+            for (sid, s) in sessions.iter() {
+                let last = s.last_output_ms.load(Ordering::Relaxed);
+                let visited = s.visited.load(Ordering::Relaxed);
+                let delta = now.saturating_sub(last);
+                let state = if delta < THINKING_MS {
+                    "thinking"
+                } else if !visited {
+                    "attention"
+                } else {
+                    "idle"
+                };
+                out.push((sid.clone(), s.ticket_id.clone(), state.to_string()));
+            }
+        }
+        out
+    }
+
+    pub fn mark_visited(&self, session_id: &str) {
+        if let Ok(sessions) = self.sessions.lock() {
+            if let Some(s) = sessions.get(session_id) {
+                s.visited.store(true, Ordering::Relaxed);
+            }
+        }
     }
 }

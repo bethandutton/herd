@@ -156,7 +156,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO Ticket (id, identifier, repo_id, title, plan_markdown, status, priority, tags)
-             VALUES (?1, ?2, ?3, ?4, ?5, 'planning', ?6, '[]')",
+             VALUES (?1, ?2, ?3, ?4, ?5, 'todo', ?6, '[]')",
             rusqlite::params![id, identifier, repo_id, title, description, priority],
         )?;
         Ok(())

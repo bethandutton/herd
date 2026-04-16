@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Trash2, Search, X, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Search, X, Loader2 } from "lucide-react";
 import type { TicketCard } from "@/App";
-import { StatusCircle, STATUS_CONFIG, STATUS_ORDER, normaliseStatus } from "@/components/board/statusIcons";
+import { StatusCircle, STATUS_CONFIG, normaliseStatus } from "@/components/board/statusIcons";
+import type { StatusIconType } from "@/components/board/statusIcons";
 import { LinearPicker } from "@/components/sidebar/LinearPicker";
 
 interface Props {
@@ -12,20 +13,6 @@ interface Props {
   onCreateBlankTask: (t: TicketCard) => void;
   onImportedTask: (t: TicketCard) => void;
   onDeleteTask: (id: string) => void;
-  onTasksChanged: () => void;
-}
-
-const COLLAPSED_KEY = "herd.sidebar.collapsedSections";
-
-function loadCollapsed(): Set<string> {
-  try {
-    const raw = localStorage.getItem(COLLAPSED_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw);
-    return new Set(Array.isArray(parsed) ? parsed : []);
-  } catch {
-    return new Set();
-  }
 }
 
 function branchAsTitle(task: TicketCard): string {
@@ -34,29 +21,37 @@ function branchAsTitle(task: TicketCard): string {
 }
 
 export function WorktreeSidebar({
-  tasks, activeTaskId, onSelectTask, onCreateBlankTask, onImportedTask, onDeleteTask, onTasksChanged,
+  tasks, activeTaskId, onSelectTask, onCreateBlankTask, onImportedTask, onDeleteTask,
 }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [q, setQ] = useState("");
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => loadCollapsed());
-  const [dragTaskId, setDragTaskId] = useState<string | null>(null);
-  const [dropTargetStatus, setDropTargetStatus] = useState<string | null>(null);
+  const [thinkingIds, setThinkingIds] = useState<Set<string>>(new Set());
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (searchOpen) searchRef.current?.focus(); }, [searchOpen]);
+
+  // Poll which tasks have actively-thinking sessions
   useEffect(() => {
-    localStorage.setItem(COLLAPSED_KEY, JSON.stringify(Array.from(collapsed)));
-  }, [collapsed]);
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const activity = await invoke<Array<{ ticket_id: string; state: string }>>("get_session_activity");
+        if (cancelled) return;
+        const next = new Set<string>();
+        for (const a of activity) if (a.state === "thinking") next.add(a.ticket_id);
+        setThinkingIds((prev) => {
+          if (prev.size === next.size && [...prev].every((id) => next.has(id))) return prev;
+          return next;
+        });
+      } catch {}
+    };
+    const id = window.setInterval(tick, 1000);
+    tick();
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, []);
 
-  const toggleCollapse = (status: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(status)) next.delete(status); else next.add(status);
-      return next;
-    });
-  };
-
+  // Filter + sort by workflow order, most recently updated first within each status.
   const filtered = tasks.filter((t) =>
     !q ||
     t.title.toLowerCase().includes(q.toLowerCase()) ||
@@ -64,53 +59,15 @@ export function WorktreeSidebar({
     (t.branch_name || "").toLowerCase().includes(q.toLowerCase())
   );
 
-  const grouped: Record<string, TicketCard[]> = {};
-  for (const status of STATUS_ORDER) grouped[status] = [];
-  for (const t of filtered) {
-    const key = normaliseStatus(t.status);
-    (grouped[key] ||= []).push(t);
-  }
-  for (const key of Object.keys(grouped)) {
-    grouped[key].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-  }
-
-  const handleTaskDragStart = (taskId: string) => (e: React.DragEvent) => {
-    setDragTaskId(taskId);
-    e.dataTransfer.effectAllowed = "move";
-    try { e.dataTransfer.setData("text/plain", taskId); } catch {}
-  };
-
-  const handleTaskDragEnd = () => {
-    setDragTaskId(null);
-    setDropTargetStatus(null);
-  };
-
-  const handleSectionDragOver = (status: string) => (e: React.DragEvent) => {
-    if (!dragTaskId) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    if (dropTargetStatus !== status) setDropTargetStatus(status);
-  };
-
-  const handleSectionDrop = (status: string) => async (e: React.DragEvent) => {
-    e.preventDefault();
-    const taskId = dragTaskId;
-    setDragTaskId(null);
-    setDropTargetStatus(null);
-    if (!taskId) return;
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    if (normaliseStatus(task.status) === status) return;
-    try {
-      await invoke("update_ticket_status", { ticketId: taskId, status });
-      onTasksChanged();
-    } catch (err) {
-      console.error("update_ticket_status failed:", err);
-    }
-  };
+  const sorted = [...filtered].sort((a, b) => {
+    const ao = STATUS_CONFIG[normaliseStatus(a.status)]?.sortOrder ?? 99;
+    const bo = STATUS_CONFIG[normaliseStatus(b.status)]?.sortOrder ?? 99;
+    if (ao !== bo) return ao - bo;
+    return b.updated_at.localeCompare(a.updated_at);
+  });
 
   return (
-    <aside className="hairline-r w-[268px] min-w-[248px] shrink-0 flex flex-col bg-background">
+    <aside className="hairline-r h-full w-full flex flex-col bg-surface text-foreground">
       <div className="flex h-10 shrink-0 items-center justify-between pl-4 pr-2">
         <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground-soft font-medium">
           {tasks.length > 0 ? `${tasks.length} Task${tasks.length === 1 ? "" : "s"}` : "Tasks"}
@@ -159,55 +116,19 @@ export function WorktreeSidebar({
         {tasks.length === 0 ? (
           <EmptySidebar onCreate={() => setPickerOpen(true)} />
         ) : (
-          STATUS_ORDER.map((status) => {
-            const items = grouped[status] || [];
-            const def = STATUS_CONFIG[status];
-            const isCollapsed = collapsed.has(status);
-            const isDropTarget = dropTargetStatus === status;
+          sorted.map((t) => {
+            const def = STATUS_CONFIG[normaliseStatus(t.status)];
             return (
-              <div
-                key={status}
-                onDragOver={handleSectionDragOver(status)}
-                onDrop={handleSectionDrop(status)}
-                className={`mb-2 last:mb-1 transition-colors rounded-sm ${
-                  isDropTarget ? "bg-primary-soft/50" : ""
-                }`}
-              >
-                <button
-                  onClick={() => toggleCollapse(status)}
-                  className="flex w-full items-center gap-1.5 pl-2 pr-3 h-7 hover:bg-surface/40 transition-colors rounded-sm"
-                >
-                  {isCollapsed
-                    ? <ChevronRight size={11} className="text-muted-foreground-soft/70" />
-                    : <ChevronDown size={11} className="text-muted-foreground-soft/70" />}
-                  <StatusCircle icon={def?.icon ?? "empty"} color={def?.color ?? "#8b8d98"} size={10} />
-                  <span className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground-soft font-medium">
-                    {def?.label ?? status}
-                  </span>
-                  <span className="text-[10px] tabular-nums text-muted-foreground-soft ml-auto">{items.length}</span>
-                </button>
-                {!isCollapsed && (
-                  <div className="min-h-[4px]">
-                    {items.map((t) => (
-                      <TaskRow
-                        key={t.id}
-                        task={t}
-                        isActive={t.id === activeTaskId}
-                        isDragging={dragTaskId === t.id}
-                        onClick={() => onSelectTask(t.id)}
-                        onDelete={() => onDeleteTask(t.id)}
-                        onDragStart={handleTaskDragStart(t.id)}
-                        onDragEnd={handleTaskDragEnd}
-                      />
-                    ))}
-                    {items.length === 0 && (
-                      <div className={`mx-2 my-0.5 h-6 rounded border border-dashed ${
-                        isDropTarget ? "border-primary/50" : "border-transparent"
-                      } transition-colors`} />
-                    )}
-                  </div>
-                )}
-              </div>
+              <TaskRow
+                key={t.id}
+                task={t}
+                statusIcon={def?.icon ?? "empty"}
+                statusColor={def?.color ?? "#8b8d98"}
+                isActive={t.id === activeTaskId}
+                isThinking={thinkingIds.has(t.id)}
+                onClick={() => onSelectTask(t.id)}
+                onDelete={() => onDeleteTask(t.id)}
+              />
             );
           })
         )}
@@ -247,47 +168,49 @@ function EmptySidebar({ onCreate }: { onCreate: () => void }) {
 }
 
 function TaskRow({
-  task, isActive, isDragging, onClick, onDelete, onDragStart, onDragEnd,
+  task, statusIcon, statusColor, isActive, isThinking, onClick, onDelete,
 }: {
   task: TicketCard;
+  statusIcon: StatusIconType;
+  statusColor: string;
   isActive: boolean;
-  isDragging: boolean;
+  isThinking: boolean;
   onClick: () => void;
   onDelete: () => void;
-  onDragStart: (e: React.DragEvent) => void;
-  onDragEnd: () => void;
 }) {
   const [hover, setHover] = useState(false);
   const label = branchAsTitle(task);
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      className={`relative group cursor-grab active:cursor-grabbing transition-opacity ${
-        isActive ? "accent-stripe" : ""
-      } ${isDragging ? "opacity-40" : ""}`}
+      className={`relative group ${isActive ? "accent-stripe" : ""}`}
     >
       <button
         onClick={onClick}
-        className={`w-full text-left pl-4 pr-7 py-2 flex items-center transition-colors duration-75 ${
+        className={`w-full text-left pl-3 pr-7 py-2 flex items-center gap-2 transition-colors duration-75 ${
           isActive
-            ? "bg-surface/80 text-foreground"
+            ? "bg-background text-foreground font-medium"
             : "text-foreground hover:bg-surface/40"
         }`}
       >
-        <p className={`text-[13px] leading-snug truncate tracking-tight ${
-          isActive ? "font-medium" : "font-normal"
+        {isThinking
+          ? <Loader2 size={11} className="animate-spin shrink-0" style={{ color: statusColor }} />
+          : <StatusCircle icon={statusIcon} color={statusColor} size={11} />}
+        <p className={`text-[13px] leading-snug truncate tracking-tight flex-1 ${
+          isActive ? "" : "font-normal"
         }`}>
           {label}
         </p>
       </button>
-      {hover && !isDragging && (
+      {hover && (
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="absolute right-2 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded text-muted-foreground-soft hover:text-destructive hover:bg-destructive/10 transition-colors"
+          className={`absolute right-2 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded transition-colors ${
+            isActive
+              ? "text-muted-foreground-soft hover:text-destructive hover:bg-destructive/10"
+              : "text-muted-foreground-soft hover:text-destructive hover:bg-destructive/10"
+          }`}
           title="Delete"
         >
           <Trash2 size={10} />

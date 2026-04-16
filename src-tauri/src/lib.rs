@@ -3,6 +3,7 @@ mod keychain;
 mod github;
 mod linear;
 mod pty;
+mod services;
 mod worktree;
 
 use db::Database;
@@ -14,6 +15,7 @@ use tauri::menu::{MenuBuilder, SubmenuBuilder};
 pub struct AppState {
     pub db: Arc<Database>,
     pub sessions: Arc<pty::SessionManager>,
+    pub services: Arc<services::ServiceManager>,
 }
 
 // ---- Settings commands ----
@@ -572,6 +574,352 @@ fn hide_pr_webview(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 
+// ---- Agent detection + launch ----
+
+#[derive(Clone, serde::Serialize)]
+struct AgentAvailability {
+    claude_code: bool,
+    codex: bool,
+    gemini: bool,
+    aider: bool,
+}
+
+fn has_command(cmd: &str) -> bool {
+    std::process::Command::new("which")
+        .arg(cmd)
+        .output()
+        .ok()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+fn check_agents() -> AgentAvailability {
+    AgentAvailability {
+        claude_code: has_command("claude"),
+        codex: has_command("codex"),
+        gemini: has_command("gemini"),
+        aider: has_command("aider"),
+    }
+}
+
+#[tauri::command]
+async fn start_agent(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    ticket_id: String,
+    agent: String,
+) -> Result<StartTicketResult, String> {
+    // Resolve the binary path for the requested agent
+    let cli = match agent.as_str() {
+        "claude_code" => "claude",
+        "codex" => "codex",
+        "gemini" => "gemini",
+        "aider" => "aider",
+        other => return Err(format!("Unknown agent: {}", other)),
+    };
+
+    let cli_path = std::process::Command::new("which")
+        .arg(cli)
+        .output()
+        .ok()
+        .and_then(|o| if o.status.success() { String::from_utf8(o.stdout).ok().map(|s| s.trim().to_string()) } else { None })
+        .ok_or_else(|| format!("{} not found on PATH", cli))?;
+
+    // Same worktree setup as start_ticket, but use the chosen CLI
+    let repo = state.db.get_active_repo().map_err(|e| e.to_string())?
+        .ok_or("No active repo configured")?;
+
+    let tickets = state.db.get_all_tickets(&repo.id).map_err(|e| e.to_string())?;
+    let ticket = tickets.iter().find(|t| t.id == ticket_id)
+        .ok_or("Task not found")?;
+
+    let branch_name = worktree::resolve_branch_name(
+        &ticket.identifier,
+        &ticket.title,
+        ticket.branch_name.as_deref(),
+    );
+
+    worktree::fetch_origin(&repo.path, &repo.primary_branch)?;
+
+    let status = worktree::branch_exists(&repo.path, &branch_name)?;
+    let worktree_path = match status {
+        worktree::BranchStatus::DoesNotExist => {
+            let base_ref = format!("origin/{}", repo.primary_branch);
+            worktree::create_worktree(&repo.path, &repo.worktrees_dir, &branch_name, &base_ref)?
+        }
+        _ => worktree::use_existing_worktree(&repo.path, &repo.worktrees_dir, &branch_name)?,
+    };
+
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let scrollback_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("Herd")
+        .join("scrollbacks");
+    let scrollback_path = scrollback_dir.join(format!("{}.log", session_id));
+
+    state.sessions.spawn_session(
+        &session_id,
+        &ticket_id,
+        &worktree_path,
+        &cli_path,
+        &scrollback_path.to_string_lossy(),
+        app.clone(),
+    )?;
+
+    let _ = state.db.update_ticket_status(&ticket_id, "working");
+    let _ = state.db.update_ticket_branch(&ticket_id, &branch_name, &worktree_path, &session_id);
+
+    Ok(StartTicketResult { session_id, branch_name, worktree_path })
+}
+
+// ---- Linear description + image proxy ----
+
+#[tauri::command]
+async fn fetch_linear_description(ticket_id: String) -> Result<Option<String>, String> {
+    let token = match keychain::get_secret("linear_api_token")? {
+        Some(t) => t,
+        None => return Ok(None),
+    };
+    let query = format!(
+        r#"query {{ issue(id: "{}") {{ description }} }}"#,
+        ticket_id
+    );
+    let body = serde_json::json!({ "query": query });
+    let resp = reqwest::Client::new()
+        .post("https://api.linear.app/graphql")
+        .header("Authorization", &token)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    #[derive(serde::Deserialize)]
+    struct GqlResp { data: Option<IssueData> }
+    #[derive(serde::Deserialize)]
+    struct IssueData { issue: IssueDesc }
+    #[derive(serde::Deserialize)]
+    struct IssueDesc { description: Option<String> }
+
+    let gql: GqlResp = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(gql.data.and_then(|d| d.issue.description))
+}
+
+#[tauri::command]
+async fn fetch_linear_image(url: String) -> Result<Vec<u8>, String> {
+    let token = keychain::get_secret("linear_api_token")?
+        .ok_or("No Linear API token configured")?;
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", &token)
+        .send()
+        .await
+        .map_err(|e| format!("Image fetch failed: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(format!("Image fetch error: {}", resp.status()));
+    }
+    let bytes = resp.bytes().await.map_err(|e| format!("Failed to read image body: {}", e))?;
+    Ok(bytes.to_vec())
+}
+
+// ---- Session activity ----
+
+#[derive(Clone, serde::Serialize)]
+struct SessionActivity {
+    session_id: String,
+    ticket_id: String,
+    state: String, // "thinking" | "attention" | "idle"
+}
+
+#[tauri::command]
+fn get_session_activity(state: tauri::State<AppState>) -> Vec<SessionActivity> {
+    state.sessions.activity_snapshot()
+        .into_iter()
+        .map(|(sid, tid, s)| SessionActivity { session_id: sid, ticket_id: tid, state: s })
+        .collect()
+}
+
+#[tauri::command]
+fn mark_session_visited(state: tauri::State<AppState>, session_id: String) -> Result<(), String> {
+    state.sessions.mark_visited(&session_id);
+    Ok(())
+}
+
+// ---- Services (shared _local worktree) ----
+
+fn local_worktree_path(repo: &db::RepoRow) -> std::path::PathBuf {
+    std::path::Path::new(&repo.worktrees_dir).join("_local")
+}
+
+/// Ensure a shared `_local` worktree exists checked out to the given branch (or primary).
+/// If the main repo already has `node_modules`, symlink it into `_local` so dev servers
+/// don't need another install.
+fn ensure_local_worktree(repo: &db::RepoRow, desired_branch: Option<&str>) -> Result<String, String> {
+    let local_path = local_worktree_path(repo);
+    let branch = desired_branch.unwrap_or(&repo.primary_branch);
+
+    if !local_path.exists() {
+        std::fs::create_dir_all(&repo.worktrees_dir).map_err(|e| e.to_string())?;
+        let out = std::process::Command::new("git")
+            .args(["worktree", "add", &local_path.to_string_lossy(), branch])
+            .current_dir(&repo.path)
+            .output()
+            .map_err(|e| format!("Failed to create _local worktree: {}", e))?;
+        if !out.status.success() {
+            let out2 = std::process::Command::new("git")
+                .args(["worktree", "add", &local_path.to_string_lossy(), &repo.primary_branch])
+                .current_dir(&repo.path)
+                .output()
+                .map_err(|e| e.to_string())?;
+            if !out2.status.success() {
+                return Err(format!("git worktree add failed: {}", String::from_utf8_lossy(&out2.stderr)));
+            }
+        }
+    }
+
+    // If the main repo has node_modules and _local doesn't, symlink it so services work
+    // without reinstalling. No harm if package.json versions differ — dev server will
+    // complain, but you can always rerun install.
+    let main_nm = std::path::Path::new(&repo.path).join("node_modules");
+    let local_nm = local_path.join("node_modules");
+    if main_nm.is_dir() && !local_nm.exists() {
+        #[cfg(unix)]
+        {
+            let _ = std::os::unix::fs::symlink(&main_nm, &local_nm);
+        }
+    }
+
+    Ok(local_path.to_string_lossy().to_string())
+}
+
+#[derive(Clone, serde::Serialize)]
+struct LocalServicesState {
+    scripts: Vec<services::ServiceDef>,
+    has_package_json: bool,
+    node_modules_installed: bool,
+    package_manager: String,
+    local_path: String,
+    current_branch: Option<String>,
+    running: Vec<services::ServiceStatus>,
+}
+
+#[tauri::command]
+fn local_services_info(state: tauri::State<AppState>) -> Result<LocalServicesState, String> {
+    let repo = state.db.get_active_repo().map_err(|e| e.to_string())?
+        .ok_or("No active repo")?;
+    let local_path = ensure_local_worktree(&repo, None)?;
+    let (scripts, has_package_json, node_modules_installed, package_manager) =
+        services::detect_scripts(&local_path)?;
+
+    let current_branch = std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&local_path)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string());
+
+    Ok(LocalServicesState {
+        scripts,
+        has_package_json,
+        node_modules_installed,
+        package_manager,
+        local_path,
+        current_branch,
+        running: state.services.list_running(),
+    })
+}
+
+#[tauri::command]
+fn switch_local_branch(
+    state: tauri::State<AppState>,
+    branch: String,
+) -> Result<String, String> {
+    let repo = state.db.get_active_repo().map_err(|e| e.to_string())?
+        .ok_or("No active repo")?;
+    let local_path = ensure_local_worktree(&repo, None)?;
+
+    // Fetch origin to make sure the branch ref exists
+    let _ = std::process::Command::new("git")
+        .args(["fetch", "origin"])
+        .current_dir(&repo.path)
+        .output();
+
+    // Checkout inside _local. Use -B to reset if already there.
+    let out = std::process::Command::new("git")
+        .args(["checkout", &branch])
+        .current_dir(&local_path)
+        .output()
+        .map_err(|e| format!("git checkout failed: {}", e))?;
+
+    if !out.status.success() {
+        // Try from origin ref
+        let out2 = std::process::Command::new("git")
+            .args(["checkout", "-B", &branch, &format!("origin/{}", &branch)])
+            .current_dir(&local_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !out2.status.success() {
+            return Err(format!("git checkout failed: {}", String::from_utf8_lossy(&out2.stderr)));
+        }
+    }
+
+    state.services.update_current_branch(&branch);
+    Ok(branch)
+}
+
+#[tauri::command]
+fn start_local_service(
+    state: tauri::State<AppState>,
+    app: tauri::AppHandle,
+    script_name: String,
+) -> Result<String, String> {
+    let repo = state.db.get_active_repo().map_err(|e| e.to_string())?
+        .ok_or("No active repo")?;
+    let local_path = ensure_local_worktree(&repo, None)?;
+
+    let current_branch = std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&local_path)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string());
+
+    state.services.start_service(&script_name, &local_path, current_branch.as_deref(), app)?;
+    Ok(script_name)
+}
+
+#[tauri::command]
+fn stop_local_service(state: tauri::State<AppState>, script_name: String) -> Result<(), String> {
+    state.services.stop_service(&script_name)
+}
+
+#[tauri::command]
+fn get_local_service_scrollback(state: tauri::State<AppState>, script_name: String) -> Result<Vec<u8>, String> {
+    state.services.get_scrollback(&script_name)
+}
+
+#[tauri::command]
+fn list_local_services(state: tauri::State<AppState>) -> Vec<services::ServiceStatus> {
+    state.services.list_running()
+}
+
+#[tauri::command]
+fn install_local_deps(
+    state: tauri::State<AppState>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    let repo = state.db.get_active_repo().map_err(|e| e.to_string())?
+        .ok_or("No active repo")?;
+    let local_path = ensure_local_worktree(&repo, None)?;
+    state.services.start_install(&local_path, app)?;
+    Ok("install".to_string())
+}
+
 // ---- Keychain commands ----
 
 #[tauri::command]
@@ -603,6 +951,7 @@ pub fn run() {
         .manage(AppState {
             db: Arc::new(db),
             sessions: Arc::new(pty::SessionManager::new()),
+            services: Arc::new(services::ServiceManager::new()),
         })
         .setup(|app| {
             // Build native macOS menu
@@ -762,6 +1111,19 @@ pub fn run() {
             fetch_linear_issues_live,
             import_linear_task,
             start_ticket,
+            check_agents,
+            start_agent,
+            fetch_linear_description,
+            fetch_linear_image,
+            local_services_info,
+            switch_local_branch,
+            start_local_service,
+            stop_local_service,
+            get_local_service_scrollback,
+            list_local_services,
+            install_local_deps,
+            get_session_activity,
+            mark_session_visited,
             get_scrollback,
             write_to_session,
             kill_session,

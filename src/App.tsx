@@ -6,7 +6,6 @@ import {
   ListChecks,
   GitPullRequest,
   Globe,
-  SquareTerminal,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -14,6 +13,7 @@ import {
   Plus,
   Trash2,
   Settings as SettingsIcon,
+  PanelLeft,
 } from "lucide-react";
 import { WorktreeSidebar } from "@/components/sidebar/WorktreeSidebar";
 import { TaskView } from "@/components/middle/TaskView";
@@ -21,9 +21,11 @@ import { Onboarding } from "@/components/onboarding/Onboarding";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { CommandPalette } from "@/components/CommandPalette";
 import { UpdateChecker } from "@/components/UpdateChecker";
+import { useTheme } from "@/hooks/useTheme";
 
 type AppView = "loading" | "onboarding" | "main";
 export type Tab = "plan" | "session" | "local" | "pr";
+export type Drawer = "plan" | "local" | "pr";
 
 export interface TicketCard {
   id: string;
@@ -48,16 +50,29 @@ export interface RepoInfo {
   preview_port: number;
 }
 
-const WORKING_STATUSES = ["in_progress", "human_input", "waiting_for_review", "ready_to_merge"];
 
 export default function App() {
+  // Apply theme/density/font-size to <html> at the root.
+  useTheme();
+
   const [view, setView] = useState<AppView>("loading");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [tickets, setTickets] = useState<TicketCard[]>([]);
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("plan");
+  const [openDrawer, setOpenDrawer] = useState<Drawer | null>(null);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [drawerFullscreen, setDrawerFullscreen] = useState<boolean>(false);
   const [repo, setRepo] = useState<RepoInfo | null>(null);
+  const [githubConfigured, setGithubConfigured] = useState(false);
+  const [drawerWidths, setDrawerWidths] = useState<Record<Drawer, number>>(() => {
+    try {
+      const raw = localStorage.getItem("herd.drawerWidths");
+      if (raw) return { plan: 420, local: 520, pr: 620, ...JSON.parse(raw) };
+    } catch {}
+    return { plan: 420, local: 520, pr: 620 };
+  });
+  const [resizing, setResizing] = useState(false);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const projectMenuRef = useRef<HTMLDivElement>(null);
 
@@ -110,14 +125,95 @@ export default function App() {
     return () => { unlisten1.then((f) => f()); };
   }, []);
 
+  // Persist drawer widths
+  useEffect(() => {
+    try { localStorage.setItem("herd.drawerWidths", JSON.stringify(drawerWidths)); } catch {}
+  }, [drawerWidths]);
+
+  // Drawer resize: mouse-move handler active while resizing
+  useEffect(() => {
+    if (!resizing || !openDrawer) return;
+    const handleMove = (e: MouseEvent) => {
+      const next = Math.min(Math.max(window.innerWidth - e.clientX, 280), Math.round(window.innerWidth * 0.8));
+      setDrawerWidths((prev) => ({ ...prev, [openDrawer]: next }));
+    };
+    const stop = () => setResizing(false);
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", stop);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", stop);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [resizing, openDrawer]);
+
+  // Whether GitHub drawer is enabled depends on token presence; refresh when settings close.
+  useEffect(() => {
+    invoke<string | null>("get_token", { key: "github_api_token" })
+      .then((v) => setGithubConfigured(!!v))
+      .catch(() => setGithubConfigured(false));
+  }, [settingsOpen]);
+
   const activeTicket = tickets.find((t) => t.id === activeTicketId) || null;
 
+  // When switching tasks, close drawers so we land on terminal.
+  useEffect(() => {
+    setOpenDrawer(null);
+    setDrawerFullscreen(false);
+  }, [activeTicketId]);
+
+  // Drop fullscreen state whenever drawer changes/closes
+  useEffect(() => { if (!openDrawer) setDrawerFullscreen(false); }, [openDrawer]);
+
+  // Poll session activity and sync status
+  useEffect(() => {
+    if (view !== "main") return;
+    let cancelled = false;
+    const prevStates: Record<string, string> = {};
+
+    const tick = async () => {
+      try {
+        const activity = await invoke<Array<{ session_id: string; ticket_id: string; state: string }>>("get_session_activity");
+        if (cancelled) return;
+        let changed = false;
+        for (const a of activity) {
+          const desired =
+            a.state === "thinking" ? "working"
+            : a.state === "attention" ? "requires_attention"
+            : null;
+          if (!desired) continue;
+          if (prevStates[a.ticket_id] === desired) continue;
+          prevStates[a.ticket_id] = desired;
+          changed = true;
+          try {
+            await invoke("update_ticket_status", { ticketId: a.ticket_id, status: desired });
+          } catch {}
+        }
+        if (changed) refreshTasks();
+      } catch {}
+    };
+
+    const id = window.setInterval(tick, 1500);
+    tick();
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [view, refreshTasks]);
+
+  // When the user visits a task whose session is in "requires_attention", flip it back to working.
   useEffect(() => {
     if (!activeTicket) return;
-    const hasBranchNow = !!activeTicket.branch_name;
-    const needsBranch = activeTab === "pr" || activeTab === "local";
-    if (needsBranch && !hasBranchNow) setActiveTab("plan");
-  }, [activeTicketId]);
+    if (activeTicket.status !== "requires_attention") return;
+    invoke<Array<{ session_id: string; ticket_id: string; state: string }>>("get_session_activity")
+      .then(async (activity) => {
+        const match = activity.find((a) => a.ticket_id === activeTicket.id);
+        if (!match) return;
+        await invoke("mark_session_visited", { sessionId: match.session_id }).catch(() => {});
+        await invoke("update_ticket_status", { ticketId: activeTicket.id, status: "working" }).catch(() => {});
+        refreshTasks();
+      }).catch(() => {});
+  }, [activeTicket?.id, activeTicket?.status, refreshTasks]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -129,12 +225,12 @@ export default function App() {
       if (e.key === "Escape") {
         if (commandPaletteOpen) setCommandPaletteOpen(false);
         else if (settingsOpen) setSettingsOpen(false);
+        else if (drawerFullscreen) setDrawerFullscreen(false);
         return;
       }
-      if (e.metaKey && e.key === "1") { e.preventDefault(); setActiveTab("plan"); return; }
-      if (e.metaKey && e.key === "2") { e.preventDefault(); setActiveTab("session"); return; }
-      if (e.metaKey && e.key === "3") { e.preventDefault(); setActiveTab("local"); return; }
-      if (e.metaKey && e.key === "4") { e.preventDefault(); setActiveTab("pr"); return; }
+      if (e.metaKey && e.key === "1") { e.preventDefault(); setOpenDrawer((d) => d === "plan" ? null : "plan"); return; }
+      if (e.metaKey && e.key === "2") { e.preventDefault(); setOpenDrawer((d) => d === "local" ? null : "local"); return; }
+      if (e.metaKey && e.key === "3") { e.preventDefault(); setOpenDrawer((d) => d === "pr" ? null : "pr"); return; }
 
       if (!isInput && !commandPaletteOpen && !settingsOpen) {
         if (e.key === "j" || e.key === "k") {
@@ -168,13 +264,13 @@ export default function App() {
   const handleCreateBlankTask = useCallback(async (t: TicketCard) => {
     await refreshTasks();
     setActiveTicketId(t.id);
-    setActiveTab("plan");
+    setOpenDrawer(null);
   }, [refreshTasks]);
 
   const handleImportedTask = useCallback(async (t: TicketCard) => {
     await refreshTasks();
     setActiveTicketId(t.id);
-    setActiveTab("plan");
+    setOpenDrawer(null);
   }, [refreshTasks]);
 
   const handleDeleteTask = useCallback(async (id: string) => {
@@ -200,20 +296,35 @@ export default function App() {
     return <Onboarding onComplete={handleOnboardingComplete} />;
   }
 
-  const hasBranch = !!activeTicket?.branch_name && WORKING_STATUSES.includes(activeTicket?.status || "");
+  const hasBranch = !!activeTicket?.branch_name;
   const hasTicket = !!activeTicket;
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode; enabled: boolean; disabledReason: string }[] = [
-    { key: "plan",    label: "Task",          icon: <ListChecks size={13} />,     enabled: hasTicket, disabledReason: "Select a task to view" },
-    { key: "session", label: "Terminal",      icon: <SquareTerminal size={13} />, enabled: hasTicket, disabledReason: "Select a task first" },
-    { key: "local",   label: "Local Preview", icon: <Globe size={13} />,          enabled: hasBranch, disabledReason: "Start work on a task to enable local preview" },
-    { key: "pr",      label: "GitHub PR",     icon: <GitPullRequest size={13} />, enabled: hasBranch, disabledReason: "Start work on a task to see its PR" },
+  const drawerButtons: { key: Drawer; icon: React.ReactNode; label: string; shortcut: string; enabled: boolean; needsToken?: boolean }[] = [
+    { key: "plan",  icon: <ListChecks size={14} />,     label: "Task",          shortcut: "⌘1", enabled: hasTicket },
+    { key: "local", icon: <Globe size={14} />,          label: "Local preview", shortcut: "⌘2", enabled: hasBranch },
+    { key: "pr",    icon: <GitPullRequest size={14} />, label: "GitHub PR",     shortcut: "⌘3", enabled: hasBranch && githubConfigured, needsToken: !githubConfigured },
   ];
 
   return (
-    <div className="flex h-screen flex-col bg-background text-foreground">
+    <div className="flex h-screen flex-col bg-background text-foreground relative">
+      {drawerFullscreen && openDrawer && activeTicket && (
+        <div className="fixed inset-0 z-[60] bg-background text-foreground">
+          <div className="h-full flex flex-col">
+            <TaskView
+              activeTask={activeTicket}
+              openDrawer={openDrawer}
+              drawerOnly
+              isFullscreen
+              onToggleFullscreen={() => setDrawerFullscreen(false)}
+            />
+          </div>
+        </div>
+      )}
       {/* Top header — full-width, draggable, hairline bottom */}
-      <header data-tauri-drag-region className="hairline-b flex shrink-0 items-center h-11 pl-[84px] pr-3">
+      <header data-tauri-drag-region className="hairline-b flex shrink-0 items-center h-11 pr-3">
+        {/* Traffic-light spacer — explicit draggable block */}
+        <div data-tauri-drag-region className="w-[84px] h-full shrink-0" />
+
         {/* Project picker */}
         <div className="titlebar-no-drag relative" ref={projectMenuRef}>
           <button
@@ -266,7 +377,7 @@ export default function App() {
           )}
         </div>
 
-        <div className="titlebar-no-drag flex items-center ml-2">
+        <div className="titlebar-no-drag flex items-center ml-2 gap-0.5">
           <button
             disabled
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground-soft/50 disabled:cursor-default"
@@ -281,60 +392,133 @@ export default function App() {
           >
             <ChevronRight size={14} />
           </button>
+          <button
+            onClick={() => setSidebarVisible((v) => !v)}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground-soft hover:text-foreground hover:bg-surface transition-colors"
+            title={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
+          >
+            <PanelLeft size={14} />
+          </button>
         </div>
 
-        {/* Hairline separator before tabs */}
+        {/* Active task label (tiny, centered-ish, non-draggable tooltip area) */}
         {activeTicket && (
-          <div className="mx-2 h-4 w-px bg-divider" />
+          <div data-tauri-drag-region className="mx-3 flex items-center gap-2 min-w-0 truncate text-[12.5px]">
+            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground-soft shrink-0">{activeTicket.identifier}</span>
+            <span className="text-foreground truncate tracking-tight">{activeTicket.title}</span>
+          </div>
         )}
 
-        {/* Tab row inline */}
+        <div data-tauri-drag-region className="flex-1" />
+
+        {/* Drawer toggles, right-aligned */}
         {activeTicket && (
           <nav className="titlebar-no-drag flex items-center gap-0.5">
-            {tabs.map((tab, i) => (
-              <div key={tab.key} className="relative group">
+            {drawerButtons.map((btn) => {
+              const active = openDrawer === btn.key;
+              const showsTokenPrompt = !!btn.needsToken && !btn.enabled;
+              const handleClick = () => {
+                if (btn.enabled) {
+                  setOpenDrawer(active ? null : btn.key);
+                } else if (showsTokenPrompt) {
+                  setSettingsOpen(true);
+                }
+              };
+              return (
                 <button
-                  onClick={() => tab.enabled && setActiveTab(tab.key)}
-                  disabled={!tab.enabled}
-                  className={`flex items-center gap-1.5 px-2.5 h-7 text-[12.5px] rounded-md transition-all duration-100 tracking-tight ${
-                    !tab.enabled
-                      ? "text-muted-foreground-soft/40 cursor-not-allowed"
-                      : activeTab === tab.key
-                        ? "bg-surface text-foreground"
-                        : "text-muted-foreground hover:text-foreground hover:bg-surface/70"
+                  key={btn.key}
+                  onClick={handleClick}
+                  title={showsTokenPrompt ? `${btn.label}: add a token in Settings` : `${btn.label}  ${btn.shortcut}`}
+                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors relative ${
+                    !btn.enabled && !showsTokenPrompt
+                      ? "text-muted-foreground-soft/30 cursor-not-allowed"
+                      : showsTokenPrompt
+                        ? "text-muted-foreground-soft/60 hover:text-foreground hover:bg-surface/70"
+                        : active
+                          ? "bg-surface text-primary"
+                          : "text-muted-foreground-soft hover:text-foreground hover:bg-surface/70"
                   }`}
                 >
-                  <span className={!tab.enabled ? "opacity-40" : activeTab === tab.key ? "text-primary" : "text-muted-foreground-soft"}>{tab.icon}</span>
-                  {tab.label}
-                  <span className={`ml-1 text-[10px] font-mono tabular-nums ${
-                    activeTab === tab.key ? "text-muted-foreground" : "text-muted-foreground-soft/60"
-                  }`}>⌘{i + 1}</span>
+                  {btn.icon}
+                  {showsTokenPrompt && (
+                    <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-warning" />
+                  )}
                 </button>
-              </div>
-            ))}
+              );
+            })}
           </nav>
         )}
-
-        <div className="flex-1" />
       </header>
 
       {/* Main — flat, full-width, sidebar flush */}
       <div className="flex flex-1 min-h-0">
-        <WorktreeSidebar
-          tasks={tickets}
-          activeTaskId={activeTicketId}
-          onSelectTask={setActiveTicketId}
-          onCreateBlankTask={handleCreateBlankTask}
-          onImportedTask={handleImportedTask}
-          onDeleteTask={handleDeleteTask}
-          onTasksChanged={refreshTasks}
-        />
-        <main data-theme="light" className="flex-1 min-w-0 bg-background text-foreground">
-          <TaskView
-            activeTask={activeTicket}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-          />
+        <div
+          className="shrink-0 overflow-hidden"
+          style={{
+            width: sidebarVisible ? 268 : 0,
+            transition: "width 220ms cubic-bezier(0.32, 0.72, 0, 1)",
+          }}
+        >
+          <div
+            style={{
+              width: 268,
+              height: "100%",
+              transform: sidebarVisible ? "translateX(0)" : "translateX(-24px)",
+              opacity: sidebarVisible ? 1 : 0,
+              transition: "transform 220ms cubic-bezier(0.32, 0.72, 0, 1), opacity 180ms ease",
+            }}
+          >
+            <WorktreeSidebar
+              tasks={tickets}
+              activeTaskId={activeTicketId}
+              onSelectTask={(id) => setActiveTicketId((prev) => prev === id ? null : id)}
+              onCreateBlankTask={handleCreateBlankTask}
+              onImportedTask={handleImportedTask}
+              onDeleteTask={handleDeleteTask}
+            />
+          </div>
+        </div>
+        <main className="flex-1 min-w-0 flex bg-background text-foreground">
+          <div className="flex-1 min-w-0">
+            <TaskView
+              activeTask={activeTicket}
+              openDrawer={openDrawer}
+            />
+          </div>
+          <div
+            className="shrink-0 flex flex-col overflow-hidden relative"
+            style={{
+              width: openDrawer && activeTicket ? drawerWidths[openDrawer] : 0,
+              boxShadow: openDrawer ? "inset 1px 0 0 0 oklch(0.93 0.004 60)" : "none",
+              transition: resizing ? "none" : "width 220ms cubic-bezier(0.32, 0.72, 0, 1)",
+            }}
+          >
+            {openDrawer && activeTicket && (
+              <>
+                {/* Left edge resize handle */}
+                <div
+                  onMouseDown={(e) => { e.preventDefault(); setResizing(true); }}
+                  className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-primary/20 transition-colors"
+                  title="Drag to resize"
+                />
+                <div
+                  key={openDrawer}
+                  className="h-full"
+                  style={{
+                    animation: resizing ? "none" : "herd-slide-in 220ms cubic-bezier(0.32, 0.72, 0, 1)",
+                  }}
+                >
+                  <TaskView
+                    activeTask={activeTicket}
+                    openDrawer={openDrawer}
+                    drawerOnly
+                    isFullscreen={false}
+                    onToggleFullscreen={() => setDrawerFullscreen(true)}
+                  />
+                </div>
+              </>
+            )}
+          </div>
         </main>
       </div>
 
@@ -467,36 +651,4 @@ export function PrTab({ activeTicket, hidden }: { activeTicket: TicketCard | nul
   );
 }
 
-// Local preview
-export function LocalPreviewTab({ activeTicket }: { activeTicket: TicketCard | null }) {
-  const [previewPort, setPreviewPort] = useState(3000);
-
-  useEffect(() => {
-    invoke<{ preview_port: number } | null>("get_active_repo").then((repo) => {
-      if (repo) setPreviewPort(repo.preview_port);
-    }).catch(() => {});
-  }, []);
-
-  if (!activeTicket) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground">Select a task to preview.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex h-full flex-col">
-      <div className="hairline-b shrink-0 px-5 py-2 flex items-center gap-2">
-        <Globe size={13} className="text-muted-foreground-soft" />
-        <span className="font-mono text-[11px] text-muted-foreground-soft">localhost:{previewPort}</span>
-      </div>
-      <iframe
-        src={`http://localhost:${previewPort}`}
-        className="flex-1 w-full border-0 bg-white"
-        title="Local preview"
-      />
-    </div>
-  );
-}
 

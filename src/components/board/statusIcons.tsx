@@ -10,13 +10,14 @@ export interface StatusDef {
 // Fixed workflow order — no automation, user drags tasks between stages.
 export const WORKFLOW: StatusDef[] & { byKey?: Record<string, StatusDef> } = [] as any;
 
-// Top-to-bottom: closer-to-merge first, new work last.
+// Top-to-bottom: fresh work first, closer-to-merge last.
 export const STATUS_CONFIG: Record<string, StatusDef> = {
-  ready_for_merge:      { label: "Ready for merge",      sortOrder: 0, icon: "three-quarter", color: "#30a46c" },
-  waiting_for_feedback: { label: "Waiting for feedback", sortOrder: 1, icon: "half",          color: "#6e6ade" },
+  todo:                 { label: "To do",                sortOrder: 0, icon: "dashed",        color: "#8b8d98" },
+  working:              { label: "Working",              sortOrder: 1, icon: "quarter",       color: "#e5a83b" },
   requires_attention:   { label: "Requires attention",   sortOrder: 2, icon: "alert",         color: "#e5484d" },
-  working:              { label: "Working",              sortOrder: 3, icon: "quarter",       color: "#e5a83b" },
-  planning:             { label: "To do",                sortOrder: 4, icon: "empty",         color: "#8b8d98" },
+  waiting_for_feedback: { label: "Waiting for feedback", sortOrder: 3, icon: "half",          color: "#6e6ade" },
+  ready_for_merge:      { label: "Ready for merge",      sortOrder: 4, icon: "three-quarter", color: "#30a46c" },
+  merged:               { label: "Merged",               sortOrder: 5, icon: "full",          color: "#30a46c" },
 };
 
 // Ordered list of status keys — used by the sidebar to render sections in a fixed order
@@ -24,13 +25,13 @@ export const STATUS_ORDER: string[] = Object.entries(STATUS_CONFIG)
   .sort((a, b) => a[1].sortOrder - b[1].sortOrder)
   .map(([k]) => k);
 
-// For any legacy status value that might still be in the DB, map to the nearest current stage
+// Map any legacy status value in the DB to a current stage.
 export function normaliseStatus(raw: string | null | undefined): string {
-  if (!raw) return "planning";
+  if (!raw) return "todo";
   if (STATUS_CONFIG[raw]) return raw;
   const legacy: Record<string, string> = {
-    backlog: "planning",
-    todo: "planning",
+    backlog: "todo",
+    planning: "todo",
     in_progress: "working",
     human_input: "requires_attention",
     attention_required: "requires_attention",
@@ -40,7 +41,7 @@ export function normaliseStatus(raw: string | null | undefined): string {
     ready_to_merge: "ready_for_merge",
     done: "ready_for_merge",
   };
-  return legacy[raw] ?? "planning";
+  return legacy[raw] ?? "todo";
 }
 
 export function StatusCircle({ icon, color, size = 14 }: { icon: StatusIconType; color: string; size?: number }) {
