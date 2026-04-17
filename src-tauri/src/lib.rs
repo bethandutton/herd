@@ -158,6 +158,7 @@ struct LinearPickerIssue {
     project: Option<String>,
     tags: Vec<String>,
     in_current_cycle: bool,
+    cycle_label: Option<String>,
 }
 
 #[tauri::command]
@@ -178,6 +179,13 @@ async fn fetch_linear_issues_live() -> Result<Vec<LinearPickerIssue>, String> {
                 started && not_ended
             })
             .unwrap_or(false);
+        let cycle_label = i.cycle.as_ref().and_then(|c| {
+            if let Some(n) = c.name.as_ref().filter(|s| !s.is_empty()) {
+                Some(n.clone())
+            } else {
+                c.number.map(|n| format!("Cycle {}", n))
+            }
+        });
         LinearPickerIssue {
             id: i.id,
             identifier: i.identifier,
@@ -188,6 +196,7 @@ async fn fetch_linear_issues_live() -> Result<Vec<LinearPickerIssue>, String> {
             project: i.project.map(|p| p.name),
             tags,
             in_current_cycle,
+            cycle_label,
         }
     }).collect())
 }

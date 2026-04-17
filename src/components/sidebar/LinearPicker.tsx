@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { X, Search, Loader2, Sparkles, AlertCircle, ArrowRight, ChevronLeft } from "lucide-react";
 import { StatusCircle, STATUS_CONFIG } from "@/components/board/statusIcons";
@@ -14,6 +15,7 @@ interface PickerIssue {
   project: string | null;
   tags: string[];
   in_current_cycle: boolean;
+  cycle_label: string | null;
 }
 
 function sortByPriorityThenUpdated(a: PickerIssue, b: PickerIssue): number {
@@ -83,11 +85,14 @@ export function LinearPicker({ open, onClose, onImported, onBlankCreated, existi
     }
   };
 
-  const filtered = (issues || []).filter((i) =>
-    !q ||
-    i.title.toLowerCase().includes(q.toLowerCase()) ||
-    i.identifier.toLowerCase().includes(q.toLowerCase())
-  );
+  const EXCLUDED_STATUSES = new Set(["done", "waiting_for_review", "ready_to_merge"]);
+  const filtered = (issues || [])
+    .filter((i) => !EXCLUDED_STATUSES.has(i.status))
+    .filter((i) =>
+      !q ||
+      i.title.toLowerCase().includes(q.toLowerCase()) ||
+      i.identifier.toLowerCase().includes(q.toLowerCase())
+    );
 
   const cycleIssues = filtered.filter((i) => i.in_current_cycle).sort(sortByPriorityThenUpdated);
   const otherIssues = filtered.filter((i) => !i.in_current_cycle).sort(sortByPriorityThenUpdated);
@@ -129,8 +134,8 @@ export function LinearPicker({ open, onClose, onImported, onBlankCreated, existi
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
       <div
         className="w-full max-w-xl rounded-xl bg-surface-elevated shadow-2xl ring-1 ring-divider overflow-hidden flex flex-col max-h-[70vh]"
         onClick={(e) => e.stopPropagation()}
@@ -255,6 +260,11 @@ export function LinearPicker({ open, onClose, onImported, onBlankCreated, existi
                     {statusDef && (
                       <span className="text-[10px] text-muted-foreground-soft">· {statusDef.label}</span>
                     )}
+                    {issue.cycle_label && (
+                      <span className={`text-[10px] ${issue.in_current_cycle ? "text-primary" : "text-muted-foreground-soft"}`}>
+                        · {issue.cycle_label}
+                      </span>
+                    )}
                     {issue.project && (
                       <span className="text-[10px] text-muted-foreground-soft">· {issue.project}</span>
                     )}
@@ -300,6 +310,7 @@ export function LinearPicker({ open, onClose, onImported, onBlankCreated, existi
           <kbd className="font-mono">esc</kbd>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

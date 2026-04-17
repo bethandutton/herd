@@ -53,6 +53,8 @@ pub struct LabelConnection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CycleRef {
     pub id: String,
+    pub number: Option<i64>,
+    pub name: Option<String>,
     #[serde(rename = "startsAt")]
     pub starts_at: Option<String>,
     #[serde(rename = "endsAt")]
@@ -142,7 +144,7 @@ impl LinearClient {
                             first: 100
                             filter: {
                                 state: {
-                                    type: { nin: ["canceled"] }
+                                    type: { nin: ["canceled", "completed"] }
                                 }
                             }
                             orderBy: updatedAt
@@ -165,6 +167,8 @@ impl LinearClient {
                                 }
                                 cycle {
                                     id
+                                    number
+                                    name
                                     startsAt
                                     endsAt
                                 }
