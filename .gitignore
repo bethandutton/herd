@@ -36,3 +36,4 @@ src-tauri/target
 *.sln
 *.sw?
 CLAUDE.md
+.claude/worktrees/

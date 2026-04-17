@@ -847,7 +847,7 @@ fn switch_local_branch(
         .current_dir(&repo.path)
         .output();
 
-    // Checkout inside _local. Use -B to reset if already there.
+    // Try checkout: local branch first, then from origin, then just stay put.
     let out = std::process::Command::new("git")
         .args(["checkout", &branch])
         .current_dir(&local_path)
@@ -855,14 +855,29 @@ fn switch_local_branch(
         .map_err(|e| format!("git checkout failed: {}", e))?;
 
     if !out.status.success() {
-        // Try from origin ref
-        let out2 = std::process::Command::new("git")
-            .args(["checkout", "-B", &branch, &format!("origin/{}", &branch)])
+        // Check if origin/<branch> exists before trying -B
+        let ref_check = std::process::Command::new("git")
+            .args(["rev-parse", "--verify", &format!("origin/{}", &branch)])
             .current_dir(&local_path)
             .output()
-            .map_err(|e| e.to_string())?;
-        if !out2.status.success() {
-            return Err(format!("git checkout failed: {}", String::from_utf8_lossy(&out2.stderr)));
+            .ok()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        if ref_check {
+            let out2 = std::process::Command::new("git")
+                .args(["checkout", "-B", &branch, &format!("origin/{}", &branch)])
+                .current_dir(&local_path)
+                .output()
+                .map_err(|e| e.to_string())?;
+            if !out2.status.success() {
+                // Non-fatal: stay on whatever branch _local is on
+                eprintln!("switch_local_branch: checkout -B failed for {}, staying on current", branch);
+            }
+        } else {
+            // Branch doesn't exist locally or remotely — just stay on current branch.
+            // This happens for tasks that haven't had their worktree created yet.
+            eprintln!("switch_local_branch: branch {} not found, staying on current", branch);
         }
     }
 

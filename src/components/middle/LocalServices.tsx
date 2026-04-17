@@ -2,7 +2,14 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Play, Square, Loader2, ExternalLink, Package, GitBranch, ChevronDown, Terminal as TerminalIcon, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
+import { Terminal as XTerm } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import "@xterm/xterm/css/xterm.css";
+import {
+  Plus, X, Loader2, ExternalLink, Package, GitBranch,
+  Globe, Maximize2, Minimize2, Pin, PinOff,
+} from "lucide-react";
 import type { TicketCard } from "@/App";
 
 interface ServiceDef { name: string; command: string }
@@ -23,41 +30,49 @@ interface Props {
   onToggleFullscreen?: () => void;
 }
 
-function extractPort(line: string): number | null {
-  const m = line.match(/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)?:?(\d{4,5})(?:\D|$)/);
+function extractPort(text: string): number | null {
+  const m = text.match(/localhost:(\d{4,5})/);
   if (!m) return null;
   const p = parseInt(m[1], 10);
-  if (p < 1024 || p > 65535) return null;
-  return p;
+  return p >= 1024 && p <= 65535 ? p : null;
 }
 
 export function LocalServices({ ticket, isFullscreen, onToggleFullscreen }: Props) {
   const [info, setInfo] = useState<LocalInfo | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("preview"); // "preview" or a script name
   const [menuOpen, setMenuOpen] = useState(false);
   const [starting, setStarting] = useState<string | null>(null);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [portByScript, setPortByScript] = useState<Record<string, number>>({});
-  const [activeRunning, setActiveRunning] = useState<string | null>(null);
-  const [logOpen, setLogOpen] = useState(false);
-  const [logText, setLogText] = useState<string>("");
+  const [previewPort, setPreviewPort] = useState<number | null>(null);
+  const [pinned, setPinned] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem("herd.pinnedScripts");
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch { return new Set(); }
+  });
   const menuRef = useRef<HTMLDivElement>(null);
   const didSwitchRef = useRef<string | null>(null);
+
+  const togglePin = (name: string) => {
+    setPinned((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      localStorage.setItem("herd.pinnedScripts", JSON.stringify([...next]));
+      return next;
+    });
+  };
 
   const refresh = useCallback(async () => {
     try {
       const next = await invoke<LocalInfo>("local_services_info");
       setInfo(next);
-      if (!activeRunning && next.running.length > 0) {
-        setActiveRunning(next.running[0].script_name);
-      }
-    } catch (e) {
-      setError(String(e));
-    }
-  }, [activeRunning]);
+    } catch (e) { setError(String(e)); }
+  }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Switch branch in _local when the active ticket changes
   useEffect(() => {
     if (!ticket.branch_name) return;
     if (didSwitchRef.current === ticket.id) return;
@@ -67,8 +82,9 @@ export function LocalServices({ ticket, isFullscreen, onToggleFullscreen }: Prop
       .catch((e) => setError(String(e)));
   }, [ticket.id, ticket.branch_name, refresh]);
 
+  // Poll running services
   useEffect(() => {
-    const id = window.setInterval(() => refresh(), 3000);
+    const id = window.setInterval(refresh, 4000);
     return () => window.clearInterval(id);
   }, [refresh]);
 
@@ -82,7 +98,7 @@ export function LocalServices({ ticket, isFullscreen, onToggleFullscreen }: Prop
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
-  // Subscribe to ALL running services so we can pick up ports + log latest for the visible one
+  // Listen to ALL running services for port detection
   useEffect(() => {
     if (!info) return;
     const unsubs: Array<Promise<() => void>> = [];
@@ -91,33 +107,28 @@ export function LocalServices({ ticket, isFullscreen, onToggleFullscreen }: Prop
         listen<number[]>(`service_output_${r.script_name}`, (e) => {
           const text = new TextDecoder().decode(new Uint8Array(e.payload));
           const port = extractPort(text);
-          if (port) setPortByScript((prev) => prev[r.script_name] === port ? prev : { ...prev, [r.script_name]: port });
-          if (r.script_name === activeRunning) {
-            setLogText((prev) => (prev + text).slice(-40_000));
-          }
+          if (port && !previewPort) setPreviewPort(port);
         })
       );
     }
     return () => { for (const u of unsubs) u.then((f) => f()); };
-  }, [info, activeRunning]);
+  }, [info, previewPort]);
 
-  // When switching active service in log view, fetch its scrollback
+  // Also scan existing scrollback for ports on mount
   useEffect(() => {
-    if (!activeRunning || !logOpen) return;
-    invoke<number[]>("get_local_service_scrollback", { scriptName: activeRunning })
-      .then((data) => {
-        if (data?.length) {
+    if (!info) return;
+    for (const r of info.running) {
+      invoke<number[]>("get_local_service_scrollback", { scriptName: r.script_name })
+        .then((data) => {
+          if (!data?.length) return;
           const text = new TextDecoder().decode(new Uint8Array(data));
-          setLogText(text);
           const port = extractPort(text);
-          if (port) setPortByScript((prev) => ({ ...prev, [activeRunning]: port }));
-        } else {
-          setLogText("");
-        }
-      }).catch(() => {});
-  }, [activeRunning, logOpen]);
+          if (port) setPreviewPort((p) => p ?? port);
+        }).catch(() => {});
+    }
+  }, [info]);
 
-  const runningByName = new Map((info?.running ?? []).map((r) => [r.script_name, r] as const));
+  const runningNames = new Set((info?.running ?? []).map((r) => r.script_name));
 
   const startScript = async (name: string) => {
     setStarting(name);
@@ -125,20 +136,17 @@ export function LocalServices({ ticket, isFullscreen, onToggleFullscreen }: Prop
     try {
       await invoke<string>("start_local_service", { scriptName: name });
       await refresh();
-      setActiveRunning(name);
+      setActiveTab(name);
       setMenuOpen(false);
-    } catch (e) {
-      setError(String(e));
-    } finally { setStarting(null); }
+    } catch (e) { setError(String(e)); }
+    finally { setStarting(null); }
   };
 
   const stopScript = async (name: string) => {
     try {
       await invoke("stop_local_service", { scriptName: name });
       await refresh();
-      if (activeRunning === name) {
-        setActiveRunning(info?.running?.find((r) => r.script_name !== name)?.script_name ?? null);
-      }
+      if (activeTab === name) setActiveTab("preview");
     } catch (e) { setError(String(e)); }
   };
 
@@ -147,187 +155,243 @@ export function LocalServices({ ticket, isFullscreen, onToggleFullscreen }: Prop
     setError(null);
     try {
       await invoke<string>("install_local_deps");
-      setActiveRunning("install");
-      setLogOpen(true);
-      const start = Date.now();
+      setActiveTab("install");
       const poll = async () => {
-        await refresh();
-        const still = (await invoke<LocalInfo>("local_services_info")).node_modules_installed;
-        if (still) setInstalling(false);
-        else if (Date.now() - start < 300_000) window.setTimeout(poll, 2000);
-        else setInstalling(false);
+        const next = await invoke<LocalInfo>("local_services_info");
+        setInfo(next);
+        if (next.node_modules_installed) setInstalling(false);
+        else window.setTimeout(poll, 2000);
       };
       poll();
-    } catch (e) {
-      setError(String(e));
-      setInstalling(false);
-    }
+    } catch (e) { setError(String(e)); setInstalling(false); }
   };
 
-  const activePort = activeRunning ? portByScript[activeRunning] : undefined;
-  const primaryRunning = (info?.running ?? [])[0];
-  const primaryPort = primaryRunning ? portByScript[primaryRunning.script_name] : undefined;
-  const previewPort = activePort ?? primaryPort;
+  // Build tab list: preview + each running service
+  const serviceTabs = (info?.running ?? []).map((r) => r.script_name);
 
   return (
     <div className="flex h-full flex-col">
-      {/* Top bar — script selector, play/stop, branch, open-in-browser */}
-      <div className="hairline-b shrink-0 px-3 py-2 flex items-center gap-2">
-        <div className="relative flex-1 min-w-0" ref={menuRef}>
+      {/* Tab bar */}
+      <div className="hairline-b shrink-0 flex items-center px-1 h-9 gap-0.5">
+        {/* Preview tab — always first */}
+        <button
+          onClick={() => setActiveTab("preview")}
+          className={`shrink-0 flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[12px] transition-colors ${
+            activeTab === "preview"
+              ? "bg-surface text-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-surface/60"
+          }`}
+        >
+          <Globe size={12} />
+          Preview
+          {previewPort && (
+            <span className="text-[10px] font-mono text-muted-foreground-soft">:{previewPort}</span>
+          )}
+        </button>
+
+        {/* Running service tabs */}
+        {serviceTabs.map((name) => (
+          <div key={name} className="shrink-0 flex items-center">
+            <button
+              onClick={() => setActiveTab(name)}
+              className={`flex items-center gap-1.5 h-7 pl-2.5 pr-1 rounded-l-md text-[12px] transition-colors ${
+                activeTab === name
+                  ? "bg-surface text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-surface/60"
+              }`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-success shrink-0" />
+              <span className="font-mono">{name}</span>
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); stopScript(name); }}
+              className={`h-7 px-1 rounded-r-md text-muted-foreground-soft hover:text-destructive transition-colors ${
+                activeTab === name ? "bg-surface" : "hover:bg-surface/60"
+              }`}
+              title={`Stop ${name}`}
+            >
+              <X size={10} />
+            </button>
+          </div>
+        ))}
+
+        {/* Plus button — start a new service */}
+        <div className="relative shrink-0 overflow-visible" ref={menuRef}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="w-full flex items-center gap-2 h-7 px-2 rounded-md bg-surface/60 hover:bg-surface text-left transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground-soft hover:text-foreground hover:bg-surface/60 transition-colors"
+            title="Start a service"
           >
-            <span className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground-soft shrink-0">Service</span>
-            <span className="text-[12.5px] text-foreground font-mono truncate">
-              {activeRunning ?? (info?.scripts?.[0]?.name ?? "—")}
-            </span>
-            <ChevronDown size={11} className="ml-auto text-muted-foreground-soft" />
+            {starting ? <Loader2 size={12} className="animate-spin" /> : <Plus size={13} />}
           </button>
           {menuOpen && info && (
-            <div className="absolute left-0 right-0 top-9 z-40 rounded-lg bg-surface-elevated shadow-2xl ring-1 ring-divider/40 py-1 max-h-[60vh] overflow-y-auto">
+            <div className="absolute left-0 top-9 z-[100] w-72 rounded-lg bg-surface-elevated shadow-2xl ring-1 ring-divider/40 py-1 max-h-[50vh] overflow-y-auto">
               {info.scripts.length === 0 && (
                 <p className="px-3 py-2 text-[11px] text-muted-foreground-soft">No scripts in package.json</p>
               )}
-              {info.scripts.map((def) => {
-                const running = runningByName.has(def.name);
-                return (
-                  <button
-                    key={def.name}
-                    onClick={() => {
-                      if (running) { setActiveRunning(def.name); setMenuOpen(false); }
-                      else startScript(def.name);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-primary-soft transition-colors"
-                  >
-                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${running ? "bg-success" : "bg-muted-foreground-soft/30"}`} />
-                    <span className="text-[12.5px] font-mono shrink-0 text-foreground">{def.name}</span>
-                    <span className="text-[10.5px] text-muted-foreground-soft truncate flex-1">{def.command}</span>
-                    {starting === def.name && <Loader2 size={10} className="animate-spin text-muted-foreground-soft" />}
-                    {running && <span className="text-[10px] text-success uppercase tracking-[0.08em]">running</span>}
-                  </button>
-                );
-              })}
+              {[...info.scripts]
+                .sort((a, b) => {
+                  const ap = pinned.has(a.name) ? 0 : 1;
+                  const bp = pinned.has(b.name) ? 0 : 1;
+                  return ap - bp;
+                })
+                .map((def, i, arr) => {
+                  const running = runningNames.has(def.name);
+                  const isPinned = pinned.has(def.name);
+                  const showDivider = i > 0 && isPinned !== pinned.has(arr[i - 1].name);
+                  return (
+                    <div key={def.name}>
+                      {showDivider && <div className="mx-2 my-1 h-px bg-divider" />}
+                      <div className="flex items-center hover:bg-primary-soft transition-colors">
+                        <button
+                          onClick={() => running ? (() => { setActiveTab(def.name); setMenuOpen(false); })() : startScript(def.name)}
+                          disabled={starting === def.name}
+                          className="flex-1 flex items-center gap-2 px-3 py-1.5 text-left min-w-0"
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${running ? "bg-success" : "bg-muted-foreground-soft/30"}`} />
+                          <span className="text-[12.5px] font-mono text-foreground shrink-0">{def.name}</span>
+                          <span className="text-[10px] text-muted-foreground-soft truncate flex-1">{def.command}</span>
+                          {running && <span className="text-[9px] uppercase tracking-wider text-success shrink-0">running</span>}
+                          {starting === def.name && <Loader2 size={10} className="animate-spin text-muted-foreground-soft shrink-0" />}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); togglePin(def.name); }}
+                          className={`shrink-0 flex h-6 w-6 items-center justify-center rounded mr-1 transition-colors ${
+                            isPinned
+                              ? "text-primary hover:text-primary/70"
+                              : "text-muted-foreground-soft/40 hover:text-muted-foreground"
+                          }`}
+                          title={isPinned ? "Unpin" : "Pin to top"}
+                        >
+                          {isPinned ? <PinOff size={10} /> : <Pin size={10} />}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           )}
         </div>
 
-        {activeRunning && runningByName.has(activeRunning) ? (
-          <button
-            onClick={() => stopScript(activeRunning)}
-            className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-[11.5px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-            title="Stop service"
-          >
-            <Square size={10} /> Stop
-          </button>
-        ) : (
-          <button
-            onClick={() => { const first = activeRunning ?? info?.scripts?.[0]?.name; if (first) startScript(first); }}
-            disabled={!info?.scripts?.length}
-            className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-[11.5px] bg-primary-soft text-primary hover:brightness-110 disabled:opacity-50"
-            title="Start service"
-          >
-            <Play size={10} /> Start
-          </button>
-        )}
+        {/* Spacer */}
+        <div className="flex-1" />
 
-        {previewPort && (
-          <button
-            onClick={() => openUrl(`http://localhost:${previewPort}`).catch(() => window.open(`http://localhost:${previewPort}`, "_blank"))}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground-soft hover:text-foreground hover:bg-surface transition-colors"
-            title={`Open localhost:${previewPort} in browser`}
-          >
-            <ExternalLink size={12} />
-          </button>
-        )}
-
-        <button
-          onClick={() => { setLogOpen(!logOpen); }}
-          className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-            logOpen ? "bg-primary-soft text-primary" : "text-muted-foreground-soft hover:text-foreground hover:bg-surface"
-          }`}
-          title="Toggle logs"
-        >
-          <TerminalIcon size={12} />
-        </button>
-        {onToggleFullscreen && (
-          <button
-            onClick={onToggleFullscreen}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground-soft hover:text-foreground hover:bg-surface transition-colors"
-            title={isFullscreen ? "Exit fullscreen" : "Expand fullscreen"}
-          >
-            {isFullscreen ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-          </button>
-        )}
-      </div>
-
-      {/* Meta strip */}
-      <div className="hairline-b shrink-0 px-4 py-1.5 flex items-center gap-3 text-[10.5px] text-muted-foreground-soft">
+        {/* Right side controls */}
         {info?.current_branch && (
-          <span className="inline-flex items-center gap-1 font-mono">
+          <span className="shrink-0 inline-flex items-center gap-1 text-[10px] text-muted-foreground-soft font-mono mr-1">
             <GitBranch size={9} /> {info.current_branch}
           </span>
         )}
         {previewPort && (
-          <span className="font-mono">localhost:{previewPort}</span>
-        )}
-        {info && info.has_package_json && !info.node_modules_installed && (
           <button
-            onClick={handleInstall}
-            disabled={installing}
-            className="ml-auto inline-flex items-center gap-1 h-6 px-2 rounded-md text-[11px] bg-warning/15 text-warning hover:brightness-110 disabled:opacity-60"
+            onClick={() => openUrl(`http://localhost:${previewPort}`).catch(() => window.open(`http://localhost:${previewPort}`, "_blank"))}
+            className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground-soft hover:text-foreground hover:bg-surface transition-colors"
+            title={`Open localhost:${previewPort} in browser`}
           >
-            {installing ? <Loader2 size={10} className="animate-spin" /> : <Package size={10} />}
-            {installing ? "Installing…" : `${info.package_manager} install`}
+            <ExternalLink size={11} />
           </button>
         )}
-        {info?.node_modules_installed && (
+        {onToggleFullscreen && (
           <button
-            onClick={() => refresh()}
-            className="ml-auto flex h-6 w-6 items-center justify-center rounded text-muted-foreground-soft hover:text-foreground hover:bg-surface"
-            title="Refresh"
+            onClick={onToggleFullscreen}
+            className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground-soft hover:text-foreground hover:bg-surface transition-colors"
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
           >
-            <RefreshCw size={10} />
+            {isFullscreen ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
           </button>
         )}
       </div>
 
-      {error && (
-        <div className="hairline-b shrink-0 px-4 py-2 text-[11px] text-destructive font-mono whitespace-pre-wrap">{error}</div>
+      {/* Install deps banner */}
+      {info && info.has_package_json && !info.node_modules_installed && (
+        <div className="hairline-b shrink-0 px-4 py-2 flex items-center gap-3">
+          <Package size={14} className="text-warning shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[11.5px] text-foreground">Dependencies not installed</p>
+          </div>
+          <button
+            onClick={handleInstall}
+            disabled={installing}
+            className="inline-flex items-center gap-1 h-6 px-2.5 text-[11px] rounded-md bg-primary-soft text-primary hover:brightness-110 disabled:opacity-60"
+          >
+            {installing ? <Loader2 size={10} className="animate-spin" /> : null}
+            {installing ? "Installing..." : `${info.package_manager} install`}
+          </button>
+        </div>
       )}
 
-      {/* Main area — iframe preview or log panel toggle */}
-      <div className="flex-1 min-h-0 flex flex-col relative">
-        {previewPort ? (
-          <iframe
-            key={`${previewPort}-${info?.current_branch ?? ""}`}
-            src={`http://localhost:${previewPort}`}
-            className="flex-1 w-full border-0 bg-white"
-            title="Local preview"
-          />
-        ) : (
-          <div className="flex-1 flex items-center justify-center px-6 text-center">
-            <div>
-              <p className="text-[13px] text-muted-foreground mb-1">No preview yet.</p>
-              <p className="text-[11.5px] text-muted-foreground-soft">Start a service from the dropdown above.</p>
-            </div>
-          </div>
-        )}
+      {error && (
+        <div className="hairline-b shrink-0 px-4 py-2 text-[11px] text-destructive">{error}</div>
+      )}
 
-        {/* Log overlay, toggled */}
-        {logOpen && (
-          <div className="absolute inset-x-0 bottom-0 max-h-[50%] h-[220px] bg-[#0c0e14] hairline-t overflow-hidden flex flex-col">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-black/50 text-[10px] text-muted-foreground-soft border-b border-white/5">
-              <TerminalIcon size={10} />
-              <span className="font-mono">{activeRunning ?? "log"}</span>
-              <button onClick={() => setLogOpen(false)} className="ml-auto text-muted-foreground-soft hover:text-foreground">×</button>
+      {/* Tab content */}
+      <div className="flex-1 min-h-0">
+        {activeTab === "preview" ? (
+          previewPort ? (
+            <iframe
+              key={`${previewPort}-${info?.current_branch ?? ""}`}
+              src={`http://localhost:${previewPort}`}
+              className="h-full w-full border-0 bg-white"
+              title="Local preview"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-center px-6">
+              <div>
+                <Globe size={20} className="text-muted-foreground-soft mx-auto mb-2" />
+                <p className="text-[13px] text-muted-foreground mb-1">No preview yet</p>
+                <p className="text-[11.5px] text-muted-foreground-soft">
+                  Start a dev server with the <Plus size={10} className="inline" /> button above.
+                </p>
+              </div>
             </div>
-            <pre className="flex-1 overflow-y-auto px-3 py-2 text-[11.5px] leading-[1.5] font-mono text-[#e1e4eb] whitespace-pre-wrap break-words">
-              {logText || "No output yet."}
-            </pre>
-          </div>
+          )
+        ) : (
+          <ServiceTerminal scriptName={activeTab} />
         )}
       </div>
     </div>
   );
+}
+
+function ServiceTerminal({ scriptName }: { scriptName: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const term = new XTerm({
+      cursorBlink: false,
+      disableStdin: true,
+      fontSize: 12,
+      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+      theme: { background: "#0c0e14", foreground: "#e1e4eb" },
+      convertEol: true,
+      scrollback: 10000,
+    });
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    term.loadAddon(new WebLinksAddon());
+    term.open(containerRef.current);
+    fitAddon.fit();
+
+    // Load existing scrollback
+    invoke<number[]>("get_local_service_scrollback", { scriptName }).then((data) => {
+      if (data?.length) term.write(new TextDecoder().decode(new Uint8Array(data)));
+    }).catch(() => {});
+
+    // Stream live output
+    const unlistenPromise = listen<number[]>(`service_output_${scriptName}`, (e) => {
+      term.write(new TextDecoder().decode(new Uint8Array(e.payload)));
+    });
+
+    const ro = new ResizeObserver(() => fitAddon.fit());
+    ro.observe(containerRef.current);
+
+    return () => {
+      ro.disconnect();
+      unlistenPromise.then((f) => f());
+      term.dispose();
+    };
+  }, [scriptName]);
+
+  return <div ref={containerRef} className="h-full w-full p-1" style={{ backgroundColor: "#0c0e14" }} />;
 }
