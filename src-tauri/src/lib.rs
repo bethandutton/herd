@@ -488,6 +488,33 @@ struct PrInfo {
     comment_count: i64,
 }
 
+#[tauri::command]
+async fn create_pr(state: tauri::State<'_, AppState>, branch_name: String) -> Result<String, String> {
+    let repo = state.db.get_active_repo().map_err(|e| e.to_string())?
+        .ok_or("No active repo")?;
+
+    let worktree_path = std::path::Path::new(&repo.worktrees_dir).join(&branch_name);
+    if !worktree_path.exists() {
+        return Err(format!("Worktree not found at {}", worktree_path.display()));
+    }
+
+    let output = tokio::process::Command::new("gh")
+        .args(["pr", "create", "--fill"])
+        .current_dir(&worktree_path)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}. Is the GitHub CLI installed?", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let msg = if !stderr.is_empty() { stderr } else { stdout };
+        return Err(if msg.is_empty() { "gh pr create failed".to_string() } else { msg });
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 // ---- Embedded PR webview (child of main window) ----
 
 fn find_pr_webview(app: &tauri::AppHandle) -> Option<tauri::Webview> {
@@ -1143,6 +1170,7 @@ pub fn run() {
             write_to_session,
             kill_session,
             check_pr_status,
+            create_pr,
             embed_pr_webview,
             resize_pr_webview,
             hide_pr_webview,

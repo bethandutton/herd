@@ -14,6 +14,8 @@ import {
   Trash2,
   Settings as SettingsIcon,
   PanelLeft,
+  RefreshCw,
+  Loader2,
 } from "lucide-react";
 import { WorktreeSidebar } from "@/components/sidebar/WorktreeSidebar";
 import { TaskView } from "@/components/middle/TaskView";
@@ -554,20 +556,54 @@ export default function App() {
 export function PrTab({ activeTicket, hidden }: { activeTicket: TicketCard | null; hidden: boolean }) {
   const [prInfo, setPrInfo] = useState<{ number: number; title: string; url: string } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const branchName = activeTicket?.branch_name ?? null;
+
+  const fetchPr = useCallback(async () => {
+    if (!branchName) {
+      setPrInfo(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const info = await invoke<{ number: number; title: string; url: string } | null>(
+        "check_pr_status",
+        { branchName },
+      );
+      setPrInfo(info);
+    } catch (e) {
+      setError(String(e));
+      setPrInfo(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [branchName]);
 
   useEffect(() => {
     setPrInfo(null);
-    if (!activeTicket?.branch_name) return;
+    setError(null);
+    fetchPr();
+  }, [fetchPr]);
 
-    setLoading(true);
-    invoke<{ number: number; title: string; url: string } | null>("check_pr_status", {
-      branchName: activeTicket.branch_name,
-    })
-      .then((info) => setPrInfo(info))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [activeTicket?.id]);
+  const handleCreate = async () => {
+    if (!branchName || creating) return;
+    setCreating(true);
+    setError(null);
+    try {
+      await invoke<string>("create_pr", { branchName });
+      toast.success("PR created");
+      await fetchPr();
+    } catch (e) {
+      setError(String(e));
+      toast.error("Failed to create PR");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   useEffect(() => {
     if (!prInfo?.url || !panelRef.current || hidden) {
@@ -622,11 +658,42 @@ export function PrTab({ activeTicket, hidden }: { activeTicket: TicketCard | nul
 
   if (!prInfo) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center space-y-1">
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="text-center space-y-3 max-w-sm">
           <GitPullRequest size={20} className="text-muted-foreground mx-auto" />
-          <p className="text-sm text-muted-foreground">No PR found yet</p>
-          <p className="text-xs text-muted-foreground/60 font-mono">{activeTicket.branch_name}</p>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">
+              {error ? "Couldn't check for a PR" : "No PR found yet"}
+            </p>
+            <p className="text-xs text-muted-foreground/60 font-mono break-all">
+              {activeTicket.branch_name}
+            </p>
+            {error && (
+              <p className="text-[11px] text-destructive font-mono whitespace-pre-wrap pt-1">
+                {error}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center justify-center gap-2 pt-1">
+            <button
+              onClick={handleCreate}
+              disabled={creating}
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 text-[12px] text-foreground bg-primary/15 hover:bg-primary/25 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+              title="Runs `gh pr create --fill` in the worktree"
+            >
+              {creating ? <Loader2 size={12} className="animate-spin" /> : <GitPullRequest size={12} />}
+              {creating ? "Creating…" : "Create PR"}
+            </button>
+            <button
+              onClick={fetchPr}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 text-[12px] text-muted-foreground hover:text-foreground hover:bg-surface disabled:opacity-50 rounded-md transition-colors"
+              title="Search GitHub for a PR on this branch"
+            >
+              <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+              Refresh
+            </button>
+          </div>
         </div>
       </div>
     );
