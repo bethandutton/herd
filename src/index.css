@@ -249,3 +249,7 @@ body {
   --color-info: var(--info);
   --color-ring: var(--ring);
 }
+
+.xterm-wrapper { padding: 12px 14px; }
+.xterm-viewport::-webkit-scrollbar { width: 8px; }
+.xterm-viewport::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 4px; }

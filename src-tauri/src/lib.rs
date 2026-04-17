@@ -16,6 +16,7 @@ pub struct AppState {
     pub db: Arc<Database>,
     pub sessions: Arc<pty::SessionManager>,
     pub services: Arc<services::ServiceManager>,
+    pub shared_services: Arc<services::ServiceManager>,
 }
 
 // ---- Settings commands ----
@@ -901,20 +902,13 @@ fn switch_local_branch(
             .unwrap_or(false);
 
         if ref_check {
-            let out2 = std::process::Command::new("git")
+            let _ = std::process::Command::new("git")
                 .args(["checkout", "-B", &branch, &format!("origin/{}", &branch)])
                 .current_dir(&local_path)
-                .output()
-                .map_err(|e| e.to_string())?;
-            if !out2.status.success() {
-                // Non-fatal: stay on whatever branch _local is on
-                eprintln!("switch_local_branch: checkout -B failed for {}, staying on current", branch);
-            }
-        } else {
-            // Branch doesn't exist locally or remotely — just stay on current branch.
-            // This happens for tasks that haven't had their worktree created yet.
-            eprintln!("switch_local_branch: branch {} not found, staying on current", branch);
+                .output();
+            // Non-fatal if this fails: stay on whatever branch _local is on.
         }
+        // If branch doesn't exist locally or remotely, stay on current branch.
     }
 
     state.services.update_current_branch(&branch);
@@ -971,6 +965,127 @@ fn install_local_deps(
     Ok("install".to_string())
 }
 
+// ---- Shared services (one instance across all worktrees) ----
+//
+// Shared services run from the MAIN repo checkout (not a worktree). They're
+// persistent across task switches — e.g. workflow engine, API, DB, queues.
+// Which scripts are "shared" vs "frontend" is declared in `.herd.json`
+// at the repo root.
+
+#[derive(Clone, serde::Serialize, serde::Deserialize, Default)]
+struct HerdConfig {
+    #[serde(default)]
+    frontend: Option<String>,
+    #[serde(default)]
+    shared: Vec<String>,
+}
+
+fn herd_config_path(repo: &db::RepoRow) -> std::path::PathBuf {
+    std::path::Path::new(&repo.path).join(".herd.json")
+}
+
+fn read_herd_config(repo: &db::RepoRow) -> HerdConfig {
+    let path = herd_config_path(repo);
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<HerdConfig>(&s).ok())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn get_herd_config(state: tauri::State<AppState>) -> Result<HerdConfig, String> {
+    let repo = state.db.get_active_repo().map_err(|e| e.to_string())?
+        .ok_or("No active repo")?;
+    Ok(read_herd_config(&repo))
+}
+
+#[tauri::command]
+fn save_herd_config(state: tauri::State<AppState>, config: HerdConfig) -> Result<(), String> {
+    let repo = state.db.get_active_repo().map_err(|e| e.to_string())?
+        .ok_or("No active repo")?;
+    let path = herd_config_path(&repo);
+    let body = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    std::fs::write(&path, body).map_err(|e| format!("Failed to write .herd.json: {}", e))
+}
+
+/// Auto-suggest a default config by inspecting the repo's package.json.
+/// Picks `dev:app` > `dev` > `start` as the frontend; everything else
+/// that looks like a long-running dev command becomes "shared".
+#[tauri::command]
+fn suggest_herd_config(state: tauri::State<AppState>) -> Result<HerdConfig, String> {
+    let repo = state.db.get_active_repo().map_err(|e| e.to_string())?
+        .ok_or("No active repo")?;
+    let (scripts, _, _, _) = services::detect_scripts(&repo.path)?;
+    let names: Vec<String> = scripts.into_iter().map(|s| s.name).collect();
+
+    let frontend = ["dev:app", "dev:web", "dev", "start"]
+        .iter()
+        .find(|candidate| names.iter().any(|n| n == *candidate))
+        .map(|s| s.to_string());
+
+    // Anything else starting with "dev" or common backend names -> shared suggestion.
+    let shared: Vec<String> = names.iter()
+        .filter(|n| Some(n.as_str()) != frontend.as_deref())
+        .filter(|n| n.starts_with("dev") || n.starts_with("serve") || n.starts_with("api") || n.starts_with("worker") || n.starts_with("queue"))
+        .cloned()
+        .collect();
+
+    Ok(HerdConfig { frontend, shared })
+}
+
+#[derive(Clone, serde::Serialize)]
+struct SharedServicesState {
+    scripts: Vec<services::ServiceDef>,
+    configured_shared: Vec<String>,
+    frontend: Option<String>,
+    has_package_json: bool,
+    node_modules_installed: bool,
+    package_manager: String,
+    repo_path: String,
+    running: Vec<services::ServiceStatus>,
+}
+
+#[tauri::command]
+fn shared_services_info(state: tauri::State<AppState>) -> Result<SharedServicesState, String> {
+    let repo = state.db.get_active_repo().map_err(|e| e.to_string())?
+        .ok_or("No active repo")?;
+    let (scripts, has_package_json, node_modules_installed, package_manager) =
+        services::detect_scripts(&repo.path)?;
+    let config = read_herd_config(&repo);
+    Ok(SharedServicesState {
+        scripts,
+        configured_shared: config.shared,
+        frontend: config.frontend,
+        has_package_json,
+        node_modules_installed,
+        package_manager,
+        repo_path: repo.path.clone(),
+        running: state.shared_services.list_running(),
+    })
+}
+
+#[tauri::command]
+fn start_shared_service(
+    state: tauri::State<AppState>,
+    app: tauri::AppHandle,
+    script_name: String,
+) -> Result<String, String> {
+    let repo = state.db.get_active_repo().map_err(|e| e.to_string())?
+        .ok_or("No active repo")?;
+    state.shared_services.start_service(&script_name, &repo.path, None, app)?;
+    Ok(script_name)
+}
+
+#[tauri::command]
+fn stop_shared_service(state: tauri::State<AppState>, script_name: String) -> Result<(), String> {
+    state.shared_services.stop_service(&script_name)
+}
+
+#[tauri::command]
+fn get_shared_service_scrollback(state: tauri::State<AppState>, script_name: String) -> Result<Vec<u8>, String> {
+    state.shared_services.get_scrollback(&script_name)
+}
+
 // ---- Keychain commands ----
 
 #[tauri::command]
@@ -1002,7 +1117,8 @@ pub fn run() {
         .manage(AppState {
             db: Arc::new(db),
             sessions: Arc::new(pty::SessionManager::new()),
-            services: Arc::new(services::ServiceManager::new()),
+            services: Arc::new(services::ServiceManager::new("service_output")),
+            shared_services: Arc::new(services::ServiceManager::new("shared_service_output")),
         })
         .setup(|app| {
             // Build native macOS menu
@@ -1173,6 +1289,13 @@ pub fn run() {
             get_local_service_scrollback,
             list_local_services,
             install_local_deps,
+            get_herd_config,
+            save_herd_config,
+            suggest_herd_config,
+            shared_services_info,
+            start_shared_service,
+            stop_shared_service,
+            get_shared_service_scrollback,
             get_session_activity,
             mark_session_visited,
             get_scrollback,

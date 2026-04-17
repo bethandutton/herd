@@ -110,6 +110,8 @@ impl SessionManager {
         let mut cmd = CommandBuilder::new(claude_path);
         cmd.cwd(worktree_path);
         cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
+        cmd.env("LANG", "en_US.UTF-8");
 
         let child = pair
             .slave

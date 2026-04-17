@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Plus,
   Trash2,
+  Play,
   Settings as SettingsIcon,
   PanelLeft,
   RefreshCw,
@@ -22,6 +23,7 @@ import { TaskView } from "@/components/middle/TaskView";
 import { Onboarding } from "@/components/onboarding/Onboarding";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { CommandPalette } from "@/components/CommandPalette";
+import { SharedServicesDrawer } from "@/components/SharedServicesDrawer";
 import { UpdateChecker } from "@/components/UpdateChecker";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -77,6 +79,7 @@ export default function App() {
   const [resizing, setResizing] = useState(false);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const projectMenuRef = useRef<HTMLDivElement>(null);
+  const [sharedServicesOpen, setSharedServicesOpen] = useState(false);
 
   const refreshTasks = useCallback(async () => {
     try {
@@ -401,6 +404,13 @@ export default function App() {
           >
             <PanelLeft size={14} />
           </button>
+          <button
+            onClick={() => setSharedServicesOpen(true)}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground-soft hover:text-foreground hover:bg-surface transition-colors"
+            title="Shared services — run once across all worktrees"
+          >
+            <Play size={13} />
+          </button>
         </div>
 
         {/* Active task label (tiny, centered-ish, non-draggable tooltip area) */}
@@ -528,6 +538,11 @@ export default function App() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         onRerunSetup={handleRerunSetup}
+      />
+
+      <SharedServicesDrawer
+        open={sharedServicesOpen}
+        onClose={() => setSharedServicesOpen(false)}
       />
 
       <CommandPalette

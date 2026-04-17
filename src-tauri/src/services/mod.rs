@@ -18,6 +18,9 @@ struct ServiceProcess {
 pub struct ServiceManager {
     /// Keyed by script name, not task — services are shared across all tasks.
     services: Mutex<HashMap<String, ServiceProcess>>,
+    /// Prefix for emitted Tauri events. Allows two ServiceManager instances
+    /// (local frontend + shared backend) to run in parallel without colliding.
+    event_prefix: &'static str,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -33,6 +36,17 @@ pub struct ServiceStatus {
     pub current_branch: Option<String>,
 }
 
+/// Shell-quote a string for safe inclusion inside `sh -c "..."`. Handles the
+/// usual suspects (spaces, quotes). Won't ever hit anything exotic in practice
+/// — script names are package.json keys.
+fn shell_quote(s: &str) -> String {
+    if !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_./:".contains(c)) {
+        s.to_string()
+    } else {
+        format!("'{}'", s.replace('\'', "'\\''"))
+    }
+}
+
 fn detect_package_manager(worktree_path: &str) -> String {
     let root = std::path::Path::new(worktree_path);
     if root.join("pnpm-lock.yaml").exists() { return "pnpm".to_string(); }
@@ -41,8 +55,8 @@ fn detect_package_manager(worktree_path: &str) -> String {
 }
 
 impl ServiceManager {
-    pub fn new() -> Self {
-        ServiceManager { services: Mutex::new(HashMap::new()) }
+    pub fn new(event_prefix: &'static str) -> Self {
+        ServiceManager { services: Mutex::new(HashMap::new()), event_prefix }
     }
 
     pub fn start_service(
@@ -84,14 +98,22 @@ impl ServiceManager {
             .openpty(PtySize { rows: 24, cols: 120, pixel_width: 0, pixel_height: 0 })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        let mut cmd = CommandBuilder::new(&pkg_mgr);
-        if is_install {
-            cmd.arg("install");
+        // Spawn through a login shell so ~/.zshrc loads (nvm, PATH, mise, etc.)
+        // Without this, npm/pnpm inherit Tauri's PATH which usually points at
+        // the system node, breaking engine-constrained scripts (e.g. `dotenv`
+        // from a workspace bin, or repos that require node 24 via nvm).
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+        let inner = if is_install {
+            format!("exec {} install", shell_quote(&pkg_mgr))
         } else {
-            cmd.args(["run", script_name]);
-        }
+            format!("exec {} run {}", shell_quote(&pkg_mgr), shell_quote(script_name))
+        };
+        let mut cmd = CommandBuilder::new(&shell);
+        cmd.args(["-l", "-c", &inner]);
         cmd.cwd(worktree_path);
         cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
+        cmd.env("LANG", "en_US.UTF-8");
 
         let child = pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn service: {}", e))?;
@@ -105,10 +127,11 @@ impl ServiceManager {
         let buffer = Arc::new(Mutex::new(Vec::<u8>::new()));
         let buffer_clone = buffer.clone();
         let sid = script_name.to_string();
+        let prefix = self.event_prefix;
 
         std::thread::spawn(move || {
             let mut chunk = [0u8; 4096];
-            let event_name = format!("service_output_{}", sid);
+            let event_name = format!("{}_{}", prefix, sid);
             loop {
                 match reader.read(&mut chunk) {
                     Ok(0) => break,
